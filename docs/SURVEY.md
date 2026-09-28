@@ -31,22 +31,18 @@ Views are not surveyed yet; that needs the browser instrument.
 
 ## Planning the next call (`--plan`)
 
-By default step 1 picks a call at random. With `--plan`, Survey uses the Map to decide what to do next. The Map is a program Survey can run and copy, so it can try a call before making it; the Terrain is only ever sent the call that was chosen.
+By default step 1 picks a call at random. With `--plan`, Survey tries a few candidate actions on a fork of the Map and makes one that does something this run has not done yet; if there is none, it picks at random. "Something" is the kind of step: the action, the branches its body took, and the shape of what it wrote (how many lines a cart has, whether a sequence grew or was reordered). Random picks rarely build the states a Drift hides in; this is coverage guidance as in fuzzing, with the Map's own control flow and state as the coverage. The Terrain only ever sees the call that was chosen.
 
-- **Read what was just written.** Every state cell an action wrote (`carts[u2]`, say) is owed a read until a query has read it on both sides. When something is owed, the next call is the query whose reads cover the most of it, with arguments drawn from the ids seen so far. Queries are pure, so candidates are tried on the Map itself. A Drift in state therefore shows at the first step where the Terrain's output can show it, instead of whenever a random read happens to come by.
-- **Otherwise, do something new.** Candidate actions are tried on a fork of the Map, and the one that makes the rarest kind of step in this run is made. A kind of step is the action, the branches its body took, and the shape of what it wrote: how many lines a cart has, which status an order is in, whether a sequence grew or was reordered. Candidate arguments favour the ids found in recently written cells, so that one call can build on the last. This is coverage guidance as in fuzzing, with the Map's own control flow and state as the coverage.
-
-Planned reads are marked `*` in the report. When a Drift is found, the report also names the step that last wrote each cell the drifting call read:
+When a Drift is found, the report names the step that last wrote each state cell behind it:
 
 ```
- 9   add_to_cart("u2", "id-1", 2)                   ok
-10 * cart("u2")                                     DRIFT in result
-    map:     [{"sku":"id-5",...},{"sku":"id-1",...}]
-    terrain: [{"sku":"id-1",...},{"sku":"id-5",...}]
+ 9 add_to_cart("u2", "id-1", 2)                     DRIFT in state
+    map:     {"carts":[{"id":"u2","lines":[{"sku":"id-5",...},{"sku":"id-1",...}]}]}
+    terrain: {"carts":[{"id":"u2","lines":[{"sku":"id-1",...},{"sku":"id-5",...}]}]}
     carts[u2] was last written at step 9
 ```
 
-Measured on the Shop before Amendment 2 (the Map moved a merged cart line to the end, the Terrain kept it in place), seeds 10 to 39: random generation found the Drift in 2 of 30 runs of 600 steps, planning in 19 of 30; with 1200 steps, 3 of 30 and 23 of 30. Without the state channel planning spends roughly half its steps on reads; with it, none, and the Drift shows at the `add_to_cart` step itself. Either way, reaching the state that hides a Drift is what limits the rate, not seeing it.
+Measured on the Shop before Amendment 2 (the Map moved a merged cart line to the end, the Terrain kept it in place), seeds 10 to 39, 600 steps: random generation found the Drift in 2 of 30 runs, planning in 10 of 30, planning with the state channel in 12 of 30 (at 1200 steps: 3, 13 and 14). With the state channel the Drift shows at the `add_to_cart` step itself; without it, when something later reads the order. Reaching the state that hides a Drift is what limits the rate, not seeing it.
 
 ## The harness protocol
 

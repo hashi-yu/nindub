@@ -155,50 +155,41 @@ test("Random is deterministic and same() ignores key order", () => {
 // lines. Before Amendment 2 the Map moved the merged line to the end; the
 // Terrain kept it in place. Here the Map is put back to the old behavior
 // and surveyed against the current one.
-test("planning reads what was just written and builds on it, so the cart-line Drift is found and blamed", async () => {
-  const shopSrc = readFileSync(new URL("../examples/shop.nindub", import.meta.url), "utf8");
+const oldShop = (shopSrc: string) => {
   const old = shopSrc.replace(
     /let merged = Line \{ sku, qty: qty_now, unit_price: s\.price \};\n\s*let lines = match current \{\n\s*Some\(_\) => existing\.lines\.map\(\|l\| if l\.sku == sku \{ merged \} else \{ l \}\),\n\s*None => existing\.lines\.push\(merged\),\n\s*\};\n\s*carts\.insert\(CartRow \{ id: user, lines \}\);/,
     "let others = existing.lines.filter(|l| l.sku != sku);\n        carts.insert(CartRow { id: user, lines: others.push(Line { sku, qty: qty_now, unit_price: s.price }) });",
   );
   assert.notEqual(old, shopSrc, "the mutation applied");
-  const r = await survey(parse(old), terrainOf(shopSrc), { seed: 4, steps: 400, plan: true, state: false });
+  return old;
+};
+
+test("planning reaches the cart-line Drift, and the state channel shows it at the add_to_cart step itself", async () => {
+  const shopSrc = readFileSync(new URL("../examples/shop.nindub", import.meta.url), "utf8");
+  const r = await survey(parse(oldShop(shopSrc)), terrainOf(shopSrc), { seed: 5, steps: 300, plan: true });
+  assert.equal(r.error, null, JSON.stringify(r.error));
   assert.ok(r.drift, "expected drift");
-  assert.equal(r.drift.channel, "result");
-  assert.match(r.drift.call, /^cart\(/);
-  assert.equal(r.steps[r.steps.length - 1]!.probe, true, "the read was planned");
-  assert.equal(r.drift.blame.length, 1);
-  assert.match(r.drift.blame[0]!.cell, /^carts\[/);
-  assert.equal(r.drift.blame[0]!.step, r.drift.step - 1, "the write just before it is blamed");
-  assert.match(r.steps[r.drift.step - 2]!.call, /^add_to_cart\(/);
+  assert.equal(r.drift.channel, "state");
+  assert.match(r.drift.call, /^add_to_cart\(/);
+  assert.ok("carts" in (r.drift.map as object));
+  assert.equal(r.drift.blame[0]!.step, r.drift.step, "the very step that wrote the cart is blamed");
 });
 
-// With the state channel (D23) the same Drift shows at the step that causes
-// it, in the cell it changed, and no read has to be planned for it.
-test("the state channel finds the cart-line Drift at the add_to_cart step itself", async () => {
+test("without the state channel the same Drift is seen later, when something reads the state", async () => {
   const shopSrc = readFileSync(new URL("../examples/shop.nindub", import.meta.url), "utf8");
-  const old = shopSrc.replace(
-    /let merged = Line \{ sku, qty: qty_now, unit_price: s\.price \};\n\s*let lines = match current \{\n\s*Some\(_\) => existing\.lines\.map\(\|l\| if l\.sku == sku \{ merged \} else \{ l \}\),\n\s*None => existing\.lines\.push\(merged\),\n\s*\};\n\s*carts\.insert\(CartRow \{ id: user, lines \}\);/,
-    "let others = existing.lines.filter(|l| l.sku != sku);\n        carts.insert(CartRow { id: user, lines: others.push(Line { sku, qty: qty_now, unit_price: s.price }) });",
-  );
-  const r = await survey(parse(old), terrainOf(shopSrc), { seed: 12, steps: 300, plan: true });
-  assert.equal(r.error, null, JSON.stringify(r.error));
-  assert.ok(!r.steps.some((s) => s.probe), "no reads had to be planned");
-  const found = r.drift;
-  assert.ok(found, "expected drift");
-  assert.equal(found.channel, "state");
-  assert.match(found.call, /^add_to_cart\(/);
-  assert.ok("carts" in (found.map as object));
-  assert.equal(found.blame[0]!.step, found.step, "the very step that wrote the cart is blamed");
+  const r = await survey(parse(oldShop(shopSrc)), terrainOf(shopSrc), { seed: 5, steps: 400, plan: true, state: false });
+  assert.ok(r.drift, "expected drift");
+  assert.equal(r.drift.channel, "result");
+  assert.ok(r.drift.step > 106, "later than the state channel's step 106");
+  assert.ok(r.drift.blame.length > 0, "the cells the read depended on are blamed");
 });
 
 test("planning finds no Drift where there is none, and stays deterministic", async () => {
   const shopSrc = readFileSync(new URL("../examples/shop.nindub", import.meta.url), "utf8");
-  const a = await survey(parse(shopSrc), terrainOf(shopSrc), { seed: 5, steps: 200, plan: true, state: false });
+  const a = await survey(parse(shopSrc), terrainOf(shopSrc), { seed: 5, steps: 200, plan: true });
   assert.equal(a.drift, null, JSON.stringify(a.drift));
   assert.equal(a.error, null, JSON.stringify(a.error));
-  assert.ok(a.steps.some((s) => s.probe), "some steps were planned reads");
-  const b = await survey(parse(shopSrc), terrainOf(shopSrc), { seed: 5, steps: 200, plan: true, state: false });
+  const b = await survey(parse(shopSrc), terrainOf(shopSrc), { seed: 5, steps: 200, plan: true });
   assert.deepEqual(a.steps.map((s) => s.call), b.steps.map((s) => s.call));
 });
 
