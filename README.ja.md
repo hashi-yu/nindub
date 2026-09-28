@@ -22,7 +22,12 @@ npm run check                                  # 型検査とテスト
 node src/cli.ts outline examples/todo.nindub   # 領土の俯瞰:region、road、署名
 node src/cli.ts run examples/todo.nindub       # Map を単体で動かす。:help でコマンド一覧
 node src/cli.ts parse examples/todo.nindub     # Map の AST を JSON で表示
+
+node src/cli.ts serve examples/todo.nindub     # Map 自身を Terrain として提供し、別のシェルで:
+node src/cli.ts survey examples/todo.nindub --terrain http://127.0.0.1:PORT --steps 200
 ```
+
+Terrain が Survey にどう答えるかは [docs/SURVEY.ja.md](docs/SURVEY.ja.md) を参照。
 
 ## 文書について
 

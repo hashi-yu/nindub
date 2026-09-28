@@ -179,6 +179,14 @@ A Map is structured as a territory of **regions** connected by **roads**, with b
 
 **Rejected:** a flat list of items (the first draft). It is a dictionary, not a map: it says what exists but not where anything is or what talks to what, and a reader must read everything to see anything. Also rejected: making the overview a tool-only rendering. The file itself must read top-down, because the file is what humans and AI read. Also rejected: regions as namespaces. Global names keep bodies and Pins simple, and the Todo Map showed no need.
 
+### D22. The first instrument is a harness protocol, not the Terrain's real routes
+
+Survey's first Projection is one HTTP endpoint on the Terrain, `POST /__nindub/call`, that runs one action or query with the injected values Survey supplies (clock, ids, port responses) and answers with the result, the effects emitted and the port requests made (`docs/SURVEY.md`). Survey runs each step on the Map first and hands the Terrain exactly what the Map consumed, so both sides see the same world (D8).
+
+This closes the loop before the instruments that drive a Terrain's real routes (`Service`), screens (`Client`) and database (`Postgres`) exist. It is a limitation, and it is stated as one: the endpoint could bypass the Terrain's real HTTP layer, so a green Survey over the protocol says the Terrain's *logic* matches the Map, not yet that its API does. The region-kind instruments of D21 replace it; the protocol stays as the reference for what an Observation of a Terrain contains.
+
+**Rejected:** starting with real routes and a Pin index. It needs a side channel for injections on every request, a way to collect effects and port requests per request, and a browser, before the first Drift can be seen. The protocol needs none of that. Also rejected: comparing Terrain state. D6 stands; the protocol carries no state.
+
 ## Consequences worth noting
 
 - The Map's actions, queries and views are the project's public interface. A separate API definition is unnecessary; it is derived from the Map.
@@ -198,6 +206,6 @@ A Map is structured as a territory of **regions** connected by **roads**, with b
 
 1. ~~Write `examples/todo.nindub` with a list screen, a detail screen, and a notification email on completion, so that the example exercises views, effects and ports and not only a domain core.~~ Done (draft).
 2. ~~Write the interpreter so the Map runs alone.~~ Done: `nindub run` (dynamic; no type checker yet).
-3. Write the Survey harness: input generation, mechanical Projection, comparison.
+3. ~~Write the Survey harness: input generation, mechanical Projection, comparison.~~ Done over the harness protocol (D22): `nindub survey`.
 4. Have AI Realize a TypeScript Terrain and iterate until Survey passes.
 5. Then attempt something that is not a Todo app.

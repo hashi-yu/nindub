@@ -2,7 +2,7 @@
 
 [English](LANGUAGE.md) | 日本語
 
-**状態:草案。** 構文は例によって決める。現在の例は [`examples/todo.nindub`](../examples/todo.nindub) で、この文書はそのファイルに何が書いてあるかを説明する。パーサ、インタプリタ(`nindub run`)、俯瞰(`nindub outline`)はある。Survey はまだない。
+**状態:草案。** 構文は例によって決める。現在の例は [`examples/todo.nindub`](../examples/todo.nindub) で、この文書はそのファイルに何が書いてあるかを説明する。パーサ、インタプリタ(`nindub run`)、俯瞰(`nindub outline`)、ハーネスプロトコル越しの Survey(`nindub survey`、[SURVEY.ja.md](SURVEY.ja.md) を参照)はある。
 
 ## 見た目
 
