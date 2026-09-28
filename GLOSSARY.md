@@ -1,43 +1,45 @@
 # Glossary
 
-## 名前
+English | [日本語](GLOSSARY.ja.md)
 
-### Nindub(言語)
-プロジェクト全体の観測可能な振る舞いを記述する超高級言語。実行でき、テストできる。
+## Names
 
-由来はシュメールの建築の神ニンドゥブ。ラガシュの王グデアの円筒碑文(紀元前2125年頃)によれば、グデアは夢の中で神殿を建てるよう命じられ、ニンドゥブがラピスラズリの板に神殿の平面図を描いた。グデアはその図のとおりに神殿を建てた。
+### Nindub (the language)
+A very-high-level language that describes all of a project's observable behavior. It is executable and testable.
 
-| 夢 | Nindub Driven Development |
+The name comes from Nindub, the Sumerian architect god. According to the Gudea cylinders (c. 2125 BC), Gudea, ruler of Lagash, was commanded in a dream to build a temple, and Nindub drew the plan of the temple on a tablet of lapis lazuli. Gudea then built the temple according to that plan.
+
+| The dream | Nindub Driven Development |
 |---|---|
-| 神の命令 | 人間の意図 |
-| ニンドゥブが描いた平面図 | Map |
-| グデアが建てた神殿 | Terrain |
+| The god's command | Human intent |
+| The plan Nindub drew | The Map |
+| The temple Gudea built | The Terrain |
 
-### Nindub Driven Development(開発手法)
-自然言語の仕様書を持たず、Nindub で書かれた Map を唯一の正として開発する手法。人間は AI と Map を書き、AI が Terrain を Realize し、Survey がその一致を保証する。
+### Nindub Driven Development (the method)
+A way of developing software with no natural-language spec, where a Map written in Nindub is the single source of truth. Humans write the Map together with AI, AI Realizes the Terrain, and Survey guarantees that the two agree.
 
-### 標語
-> 地図が領土に先行する。 — the map precedes the territory.
+### Motto
+> The map precedes the territory.
 
-ボードリヤール『シミュラークルとシミュレーション』より。コージブスキーの「地図は領土ではない」を反転させた言葉で、Map を正とする思想を表す。
+From Jean Baudrillard's *Simulacra and Simulation*. It inverts Alfred Korzybski's "the map is not the territory", and expresses the idea that the Map is the source of truth.
 
-## 用語
+## Terms
 
-| 語 | 定義 |
+| Term | Definition |
 |---|---|
-| **Map**(地図) | Nindub で書かれた、プロジェクトの観測可能な振る舞いをすべて記述した1ファイル。実行でき、正である。 |
-| **Terrain**(地形) | Map の下にある実装(ts / rust / python など)。AI が生成し、人間は普段読まない。 |
-| **Pin** | Map の要素と Terrain の位置を結ぶ紐付け。 |
-| **Zoom** | Pin をたどって下の階層を見る操作。 |
-| **Scale**(縮尺) | Zoom の階層の深さ。Map の要素は Nindub でさらに分解されるか、Pin で Terrain に紐付くかのどちらか。 |
-| **Projection**(投影) | Terrain の状態を Map の状態に写す関数。 |
-| **Survey**(測量) | 同じ操作列を Map と Terrain に流し、Projection を通して結果を比べる検証。 |
-| **Drift** | Survey が不一致を出した状態。 |
-| **Surface rule** | 観測できる振る舞いは Map に書く。観測できないもの(データ構造、DB の選択、最適化、ライブラリ)は Terrain の裁量。 |
-| **Realize** | AI が Map から Terrain を作り、Survey が通るまで直す行為。 |
+| **Map** | A single file, written in Nindub, that describes all of a project's observable behavior. It is executable and it is the source of truth. |
+| **Terrain** | The implementation beneath the Map (TypeScript, Rust, Python, and so on). AI generates it, and humans normally do not read it. |
+| **Pin** | A link from an element of the Map to a location in the Terrain. |
+| **Zoom** | Following a Pin to look at the level below. |
+| **Scale** | How deep a Zoom goes. Each element of the Map is either broken down further in Nindub or Pinned to the Terrain. |
+| **Projection** | A function that maps the state of the Terrain onto the state of the Map. |
+| **Survey** | Verification that runs the same sequence of operations against both the Map and the Terrain and compares the results through the Projection. |
+| **Drift** | The state in which Survey reports a mismatch. |
+| **Surface rule** | Observable behavior belongs in the Map. Anything unobservable (data structures, choice of database, optimizations, libraries) is left to the Terrain. |
+| **Realize** | What AI does to build the Terrain from the Map, fixing it until Survey passes. |
 
-## 避ける言葉
+## Words we avoid
 
-- **Spec**:Nindub Driven Development は仕様書の否定から始まる。
-- **Model**:UML 時代のモデル駆動開発や、機械学習のモデルと紛らわしい。
-- **Blueprint**:「作る前の設計図」を連想させ、Map が実行できることが伝わらない。
+- **Spec**: Nindub Driven Development starts from rejecting specs.
+- **Model**: It evokes UML-era model-driven development, and is easily confused with machine-learning models.
+- **Blueprint**: It suggests a design drawn before building, and hides the fact that the Map is executable.
