@@ -3,7 +3,9 @@
 //! This one file is the whole project. Everything observable about the
 //! Todo app is here: state, actions, queries, screens, side effects and
 //! external dependencies. Anything not here (database, framework, layout,
-//! colors) is the Terrain's discretion.
+//! colors, file structure) is the Terrain's discretion. The Map does not
+//! know the Terrain exists; the Terrain points at the Map (see Pins in
+//! docs/LANGUAGE.md).
 //!
 //! Syntax is a draft. See docs/LANGUAGE.md.
 
@@ -42,7 +44,6 @@ inject ids: IdSource;
 
 // ---------------------------------------------------------------- State
 
-#[pin(ts = "src/store/todos.ts")]
 state todos: Table<Todo>;
 
 invariant "titles are between 1 and 200 characters" {
@@ -58,7 +59,6 @@ invariant "ids are unique" {
 // A port is an external service the project depends on. Requests to it
 // are observed; responses are injected by Survey.
 
-#[pin(ts = "src/ports/directory.ts")]
 port Directory {
     fn email_of(user: UserId) -> Result<Email, DirectoryError>;
 }
@@ -73,7 +73,6 @@ enum DirectoryError {
 // An effect is a side effect on the outside world, emitted as data and
 // never performed by the Map. The sequence of emitted effects is observed.
 
-#[pin(ts = "src/effects/mail.ts")]
 effect SendMail {
     to: Email,
     subject: Text,
@@ -82,7 +81,6 @@ effect SendMail {
 
 // ---------------------------------------------------------------- Actions
 
-#[pin(ts = "src/api/todos.ts::create", via = http("POST /todos"))]
 action create(user: UserId, title: Text) -> Result<TodoId, Error> {
     requires (1..=200).contains(title.len()) else Error::InvalidTitle;
 
@@ -97,7 +95,6 @@ action create(user: UserId, title: Text) -> Result<TodoId, Error> {
     Ok(id)
 }
 
-#[pin(ts = "src/api/todos.ts::complete", via = http("POST /todos/{id}/complete"))]
 action complete(user: UserId, id: TodoId) -> Result<(), Error> {
     let todo = todos.get(id) else Error::NotFound;
     requires todo.owner == user else Error::Forbidden;
@@ -118,7 +115,6 @@ action complete(user: UserId, id: TodoId) -> Result<(), Error> {
     Ok(())
 }
 
-#[pin(ts = "src/api/todos.ts::remove", via = http("DELETE /todos/{id}"))]
 action remove(user: UserId, id: TodoId) -> Result<(), Error> {
     let todo = todos.get(id) else Error::NotFound;
     requires todo.owner == user else Error::Forbidden;
@@ -129,14 +125,12 @@ action remove(user: UserId, id: TodoId) -> Result<(), Error> {
 
 // ---------------------------------------------------------------- Queries
 
-#[pin(ts = "src/api/todos.ts::get", via = http("GET /todos/{id}"))]
 query get(user: UserId, id: TodoId) -> Result<Todo, Error> {
     let todo = todos.get(id) else Error::NotFound;
     requires todo.owner == user else Error::Forbidden;
     Ok(todo)
 }
 
-#[pin(ts = "src/api/todos.ts::list", via = http("GET /todos"))]
 query list(user: UserId) -> Vec<Todo> {
     todos
         .filter(|t| t.owner == user)
@@ -149,7 +143,6 @@ query list(user: UserId) -> Vec<Todo> {
 // acted on. It is observed as data. Layout, color and typography are the
 // Terrain's discretion.
 
-#[pin(ts = "src/ui/List.tsx", via = browser("/"))]
 view List(user: UserId) {
     heading("Todos");
 
@@ -165,7 +158,6 @@ view List(user: UserId) {
     }
 }
 
-#[pin(ts = "src/ui/Detail.tsx", via = browser("/todos/{id}"))]
 view Detail(user: UserId, id: TodoId) {
     match get(user, id) {
         Ok(t) => {

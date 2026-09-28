@@ -6,7 +6,7 @@ English | [日本語](LANGUAGE.ja.md)
 
 ## Flavor
 
-Nindub reads like Rust: `struct`, `enum`, `fn`, `let`, `match`, `Result<T, E>`, closures, `#[attributes]`, `//` comments. The resemblance is deliberate (see [D16](DESIGN.md#d16-the-syntax-is-rust-flavored)). What differs is the top-level vocabulary: a Map is not made of functions and modules but of the constructs below, each of which corresponds to something Survey can observe.
+Nindub reads like Rust: `struct`, `enum`, `fn`, `let`, `match`, `Result<T, E>`, closures, `//` comments. The resemblance is deliberate (see [D16](DESIGN.md#d16-the-syntax-is-rust-flavored)). What differs is the top-level vocabulary: a Map is not made of functions and modules but of the constructs below, each of which corresponds to something Survey can observe.
 
 ## Top-level constructs
 
@@ -46,18 +46,24 @@ A view body is a sequence of elements. Each element is either content or an affo
 
 Control flow (`if`, `for`, `match`) is ordinary. A view may call queries, never actions directly; actions are reachable only through affordances, so that what the user can do is exactly what the view declares.
 
-## Pins
+## Pins live in the Terrain, not in the Map
 
-A Pin is an attribute on a state, port, effect, action, query or view:
+The Map never names a file, a route or a framework. Where an element is realized is the Terrain's discretion (D5), and the Map must not change because the Terrain was reorganized (D17). So a Pin points from the Terrain up at the Map, not the other way round:
 
-```rust
-#[pin(ts = "src/api/todos.ts::create", via = http("POST /todos"))]
+```ts
+// src/api/todos.ts
+/** @nindub action create via http POST /todos */
+export async function create(user: UserId, title: string) { ... }
 ```
 
-- The first argument names the Terrain language and location.
-- `via` names the transport through which Survey observes this element: `http(...)` for actions and queries, `browser(...)` for views, none for state (never observed), ports and effects (observed at the boundary).
+- The annotation names the Map element the code realizes.
+- `via` names the transport through which Survey observes it: `http ...` for actions and queries, `browser ...` for views. State is never observed; ports and effects are observed at the boundary they cross.
 
-Projection is generated from the element's signature and its Pin's transport (D7).
+The Nindub tool collects Pins into a generated index next to the Map (`todo.pins`, committed like a lockfile). Zoom reads the index; a viewer shows Pins overlaid on the Map. Projection is generated from the element's signature in the Map and the transport in its Pin (D7).
+
+## Amendments
+
+While Realizing, AI will find places where the Map is wrong, incomplete or silent. It does not edit the Map. It submits an Amendment: a diff to the Map, with a reason, and the Survey result of the current Terrain against the unamended Map so that the behavior the change would permit is visible. A human accepts it (the Map changes), rejects it (the Terrain must change), or rules it discretion (the Map stays silent on purpose). See D18.
 
 ## Not yet designed
 

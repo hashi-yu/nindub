@@ -34,7 +34,9 @@ A Map describes everything observable about a project: state, operations, screen
 
 ### D4. One file, zoomable
 
-A project is one Map file. Each element of the Map is either broken down further in Nindub or Pinned to a location in the Terrain. Zoom follows a Pin. Scale is how deep the Zoom goes. The file is one document with nested structure, not a flat list.
+A project is one Map file. Each element of the Map is either broken down further in Nindub or realized in the Terrain. Zoom follows a Pin from an element to where the Terrain realizes it. Scale is how deep the Zoom goes. The file is one document with nested structure, not a flat list.
+
+*Amended by D17: Pins are not written in the Map file.*
 
 ### D5. The Surface rule decides what goes in the Map
 
@@ -103,9 +105,33 @@ The language is **Nindub**, after the Sumerian architect god who drew the temple
 
 ### D16. The syntax is Rust-flavored
 
-Nindub borrows Rust's surface: `struct`, `enum`, `Result<T, E>`, `match`, `let ... else`, closures, `#[attributes]`. The top-level vocabulary is Nindub's own (`state`, `action`, `query`, `view`, `effect`, `port`, `inject`, `invariant`). Pins are attributes on the element they pin. The first example is `examples/todo.nindub`; the constructs are described in `docs/LANGUAGE.md`.
+Nindub borrows Rust's surface: `struct`, `enum`, `Result<T, E>`, `match`, `let ... else`, closures. The top-level vocabulary is Nindub's own (`state`, `action`, `query`, `view`, `effect`, `port`, `inject`, `invariant`). The first example is `examples/todo.nindub`; the constructs are described in `docs/LANGUAGE.md`.
 
-**Rejected:** TypeScript-flavored syntax (too permissive; errors and absence are not first-class), Elm-flavored (unfamiliar to most readers and to AI), and a syntax invented from scratch (every hour spent on novel syntax is an hour not spent on the interpreter, and AI reads Rust well).
+**Rejected:** TypeScript-flavored syntax (too permissive; errors and absence are not first-class), Elm-flavored (unfamiliar to most readers and to AI), and a syntax invented from scratch (every hour spent on novel syntax is an hour not spent on the interpreter, and AI reads Rust well). A first draft put Pins in the Map as `#[pin(...)]` attributes; D17 removed them.
+
+### D17. The Map changes only when a human accepts an Amendment
+
+Nothing in the Map may change because the Terrain changed. The Map changes for exactly one reason: a human accepted an Amendment (D18). Reorganizing the Terrain, renaming its files, switching its framework or database, none of these touch the Map.
+
+Consequently Pins are not written in the Map. A Pin is an annotation in the Terrain naming the Map element it realizes and the transport through which it is observed. The Nindub tool collects Pins into a generated index committed next to the Map; Zoom and viewers use the index, and a viewer may show Pins overlaid on the Map. The Map file itself never names a file, route or framework.
+
+**Rejected:** Pins as attributes in the Map (`#[pin(ts = "src/api/todos.ts::create", via = http("POST /todos"))]`). It reads well and makes Zoom trivial, but it makes the Map depend on the Terrain's file layout, which is the Terrain's discretion under D5, and it forces a Map edit whenever the Terrain is reorganized, which inverts the direction of truth.
+
+### D18. AI proposes Amendments; a human decides
+
+While Realizing, AI will find that the Map is wrong (an invariant cannot hold), incomplete (an error case is missing, a port is needed) or silent (the Map says nothing about pagination or duplicates). AI never edits the Map. It submits an Amendment: a diff to the Map, a reason, and the Survey result of the current Terrain against the unamended Map, so that the behavior the Amendment would permit is concrete.
+
+A human makes one of three rulings:
+
+| Ruling | Meaning | Effect |
+|---|---|---|
+| Accept | the Map was wrong or incomplete | the Map changes; Survey runs against the new Map |
+| Reject | the Map is right | the Terrain must change; Survey runs against the old Map |
+| Discretion | the Map is silent and should stay so | nothing changes; the point is recorded as unobserved |
+
+Only Drift raises an Amendment. Terrain changes that Survey does not detect are, by definition, within the Terrain's discretion and need no review.
+
+This channel reopens, in a different place, the hole that D7 closed for Projection: AI could propose an Amendment that weakens the Map until Survey passes, as an agent might delete a test to make the suite pass. Unlike Projection, this cannot be closed mechanically, because whether a change to the Map is right is a question about human intent. Human acceptance is therefore not a convenience but the only defense, and the attached Survey result exists to make that review concrete. It is also why the review surface is the Map diff, which is short and high-level, and not the Terrain diff (D13).
 
 ## Consequences worth noting
 

@@ -46,18 +46,24 @@ view の本体は要素の列である。各要素は内容か操作のどちら
 
 制御構文(`if`、`for`、`match`)は普通に使える。view は query を呼べるが、action を直接呼ぶことはできない。action には操作を通してしか到達できないので、ユーザーにできることは view が宣言したものと正確に一致する。
 
-## Pin
+## Pin は Terrain にあり、Map にはない
 
-Pin は state、port、effect、action、query、view に付ける属性である。
+Map はファイル名、ルート、フレームワークを一切書かない。要素がどこで実現されるかは Terrain の裁量であり(D5)、Terrain が整理し直されたからといって Map が変わってはならない(D17)。したがって Pin は Terrain から Map を指す。逆ではない。
 
-```rust
-#[pin(ts = "src/api/todos.ts::create", via = http("POST /todos"))]
+```ts
+// src/api/todos.ts
+/** @nindub action create via http POST /todos */
+export async function create(user: UserId, title: string) { ... }
 ```
 
-- 最初の引数は Terrain の言語と位置。
-- `via` は Survey がこの要素を観測するトランスポート。action と query は `http(...)`、view は `browser(...)`。state(観測しない)、port と effect(境界で観測する)には付けない。
+- 注釈は、そのコードが実現する Map の要素を名指しする。
+- `via` は Survey がそれを観測するトランスポート。action と query は `http ...`、view は `browser ...`。state は観測しない。port と effect は、それが越える境界で観測する。
 
-Projection は要素のシグネチャと Pin のトランスポートから生成する(D7)。
+Nindub のツールは Pin を集め、Map の隣に索引を生成する(`todo.pins`。ロックファイルのようにコミットする)。Zoom は索引を読み、ビューアは Pin を Map に重ねて表示する。Projection は Map にある要素のシグネチャと、Pin にあるトランスポートから生成する(D7)。
+
+## Amendment(改訂提案)
+
+Realize の途中で、AI は Map が間違っている、足りない、沈黙している箇所を見つける。AI は Map を編集しない。Amendment を提出する。Map への diff に理由を添え、さらに現在の Terrain を改訂前の Map に対して Survey した結果を添えて、その変更が許すことになる振る舞いが見えるようにする。人間は採用(Map が変わる)、却下(Terrain を直す)、裁量(Map は意図的に沈黙したままにする)のいずれかを選ぶ。D18 を参照。
 
 ## まだ設計していないもの
 

@@ -29,7 +29,8 @@ From Jean Baudrillard's *Simulacra and Simulation*. It inverts Alfred Korzybski'
 |---|---|
 | **Map** | A single file, written in Nindub, that describes all of a project's observable behavior. It is executable and it is the source of truth. |
 | **Terrain** | The implementation beneath the Map (TypeScript, Rust, Python, and so on). AI generates it, and humans do not read it to learn what it does. |
-| **Pin** | A link from an element of the Map to a location in the Terrain, naming the transport (function call, HTTP, browser) through which that element is observed. |
+| **Pin** | An annotation in the Terrain naming the Map element it realizes and the transport (function call, HTTP, browser) through which that element is observed. Pins point from the Terrain to the Map, never the other way; the Map file contains none. The tool collects them into a generated index. |
+| **Amendment** | A proposed change to the Map, submitted by AI during Realize with a reason and the Survey result against the unamended Map. A human accepts it, rejects it, or rules it discretion. The Map changes only through accepted Amendments. |
 | **Zoom** | Following a Pin to look at the level below. |
 | **Scale** | How deep a Zoom goes. Each element of the Map is either broken down further in Nindub or Pinned to the Terrain. |
 | **Observation** | Anything that comes out of the Map or the Terrain in response to inputs. There are four channels: results, views, effects and ports. Survey compares observations, never internal state. |
