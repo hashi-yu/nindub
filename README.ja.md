@@ -12,6 +12,16 @@
 
 用語は [GLOSSARY.ja.md](GLOSSARY.ja.md)、これまでの設計上の決定とその理由は [docs/DESIGN.ja.md](docs/DESIGN.ja.md)、Map がどう見えるかは [docs/LANGUAGE.ja.md](docs/LANGUAGE.ja.md) と [examples/todo.nindub](examples/todo.nindub) を参照。
 
+## 開発
+
+ツールは TypeScript で書かれ、Node 22.18 以降でビルドなしに動く。
+
+```sh
+npm install
+npm run check                                  # 型検査とテスト
+node src/cli.ts parse examples/todo.nindub     # Map の AST を JSON で表示
+```
+
 ## 文書について
 
 文書は英語と日本語の両方で書く。英語版は `NAME.md`、日本語版は `NAME.ja.md` に置き、内容は常に揃える。

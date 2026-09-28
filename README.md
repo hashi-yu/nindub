@@ -12,6 +12,16 @@ We call this way of working **Nindub Driven Development**.
 
 See [GLOSSARY.md](GLOSSARY.md) for the vocabulary, [docs/DESIGN.md](docs/DESIGN.md) for the design decisions made so far and why, and [docs/LANGUAGE.md](docs/LANGUAGE.md) with [examples/todo.nindub](examples/todo.nindub) for what a Map looks like.
 
+## Development
+
+The tool is written in TypeScript and runs on Node 22.18 or later with no build step.
+
+```sh
+npm install
+npm run check                                  # typecheck + tests
+node src/cli.ts parse examples/todo.nindub     # print a Map's AST as JSON
+```
+
 ## Documentation
 
 All documents are written in both English and Japanese. The English version lives in `NAME.md` and the Japanese version in `NAME.ja.md`. The two are always kept in sync.

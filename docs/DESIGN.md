@@ -133,6 +133,14 @@ Only Drift raises an Amendment. Terrain changes that Survey does not detect are,
 
 This channel reopens, in a different place, the hole that D7 closed for Projection: AI could propose an Amendment that weakens the Map until Survey passes, as an agent might delete a test to make the suite pass. Unlike Projection, this cannot be closed mechanically, because whether a change to the Map is right is a question about human intent. Human acceptance is therefore not a convenience but the only defense, and the attached Survey result exists to make that review concrete. It is also why the review surface is the Map diff, which is short and high-level, and not the Terrain diff (D13).
 
+### D19. The tool is written in TypeScript
+
+The parser, interpreter and Survey harness are TypeScript, run directly by Node's type stripping with no build step and no runtime dependencies.
+
+Reasons: the fastest route to a working loop, which is the project's main risk; Playwright is native to the ecosystem, and the browser accessibility tree is the candidate Projection for views; the first Terrain is TypeScript too, so the HTTP adapters share a language; and AI reads and writes TypeScript reliably.
+
+**Rejected:** Rust. It matches the surface syntax and ships a single binary, but neither helps the interpreter exist sooner, and browser automation would go through a separate process. If performance or distribution ever matter, the interpreter's semantics will by then be pinned by tests, and a rewrite is safe.
+
 ## Consequences worth noting
 
 - The Map's actions, queries and views are the project's public interface. A separate API definition is unnecessary; it is derived from the Map.
