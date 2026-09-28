@@ -39,8 +39,6 @@ Map の要素を実現する関数や型には Pin のコメント `/** @nindub 
 
 Map は `region store: Postgres` と言う。この Terrain は行をメモリ上の `Map` に持つ。ハーネスプロトコル越しの Survey にはこの違いは見えない(D22 が制約として明記している)。D21 の DB の計器ができれば見える。
 
-Map への変更案:まだない。判断は人間のもの(D18)。
+選択肢は(D18):**採用**(Map を `region store: Store` に変えて Remap)、**却下**(この Terrain が Postgres のストアを持つ)、**裁量**。
 
-- **採用**:Map を `region store: Store`(任意のストア)に変えて Remap する。この Terrain は準拠する。
-- **却下**:`Postgres` のまま。DB の計器が来る前に、この Terrain は Postgres のストアを持たなければならない。
-- **裁量**:Map の `Postgres` は本番で意図するストアとして残し、例の Terrain は代替品だと記録する。
+**判断:裁量**(2026-09-28)。Map は `Postgres` のまま。本番で意図するストアを述べており、その意図は正しい。この例の Terrain はストアの代替品であり、ここにそう記す。Remap はしない。DB の計器ができたとき、`region store` を実現すると主張する Terrain は Postgres でなければならず、そうでなければ新たな Amendment を起こす。
