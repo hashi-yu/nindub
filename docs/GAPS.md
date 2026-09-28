@@ -45,6 +45,7 @@ Vocabulary follows [GLOSSARY.md](../GLOSSARY.md).
 | H4 | **The Terrain can behave only while tested.** D11 requires injection points for the clock, ids and ports, so the Terrain can tell that it is running under Survey and change its behavior only then. | D8, D11 | existing |
 | H5 | **Amendments can weaken the Map (acknowledged).** Human acceptance is the only defense, yet the Amendment carries only the Survey result of the Terrain against the unamended Map. Nothing mechanically shows **how the Map's own behavior changes**. | D18 | existing |
 | H6 | **Tool-drafted Amendments bring the Terrain→Map direction back.** D17 lets the tool draft an Amendment "where a Drift determines it". A draft that a Drift determines is, in effect, a diff that makes the Map match the Terrain. Presented as the default, it pulls the ruling toward Accept. The direction D1 rejected (deriving the Map from the Terrain) returns in the form of a draft. | D1, D17 | new |
+| H36 | **Drift is found late and located coarsely.** Survey compares only what the call made in that step returns. A divergence in state stays invisible until something reads it, and is missed if nothing does. In the Shop, a Drift that needed a specific three-call setup appeared in 2 of 30 runs. Quint Connect compares state after every step and catches such a divergence at the step where it happens. | D6, D22, DESIGN's Shop findings | new |
 
 ### B. Gaps where Survey compares too much and takes away the Terrain's discretion
 
@@ -284,6 +285,45 @@ action en() -> Result<Error, Error> { Ok(Error::Bad) }
 - Update LANGUAGE's status line, D9's mention of a linter, and the statement about rendering views, to match the code and P1–P3 (H35).
 - **Closes:** H32, H33, H35
 
+### P14. Compare a state snapshot after every step (under consideration, undecided)
+
+**Status: the leading candidate, not yet decided.**
+
+- **How it works:** the harness protocol (D22) gains `POST /__nindub/state`. The Terrain returns each `state` of the Map, in the Map's shape and in the wire encoding (for example `{ "todos": [ ... ] }`). Survey calls it after every step and compares it with the interpreter's state. This is a fourth comparison channel, `state`, and a mismatch is a Drift.
+- **Only the returned shape is fixed:** how the Terrain stores its data (database, data structures) stays its discretion. A Terrain that stores `completed_at` instead of `done: bool` converts on the way out.
+- **How it compares:**
+  - A Table is compared as a set keyed by id, without order. Order that shows up in observations is still caught by the existing channels, as the Shop's cart-line order was.
+  - No id renaming is needed, because Survey injects the same ids into both sides (D22).
+- **Principle: what AI writes can make Survey fail, never make it pass.**
+  - A pass requires the three existing channels to agree **and** the state to agree.
+  - If the snapshot lies, the pass condition falls back to today's Survey and gets no weaker.
+  - D6 and D22 rejected state comparison because whoever writes the mapping could make Survey pass (D7). Under this rule, that reason no longer holds.
+- **Safeguards:**
+  - **The snapshot is read-only.** A Terrain that quietly repairs its state whenever a snapshot is taken behaves correctly only under Survey (H4). This can be checked mechanically: run the same seed again without snapshots, and require the same observations.
+  - **It is unreachable from production routes**, like `/__nindub/call` and `/__nindub/reset` (P7).
+- **Closes:**
+  - H36.
+  - H19. The snapshot has the Map's shape, so the Map's invariants apply to the Terrain's state directly, and a violation is a Drift.
+  - It also strengthens H30: comparing snapshots right after P11's migration shows where a migration went wrong.
+- **Comparison:**
+
+| | Survey today | Option 1: probe every query after every step | P14 (option 2): a snapshot after every step |
+|---|---|---|---|
+| When a divergence is seen | when something reads that state | at the step | at the step |
+| Localization | coarse | which query | which row and which value |
+| AI-written code in the check | none | none | yes, but it can only fail a run |
+| Cost per step | one call | queries × argument combinations | one call per `state` |
+| Extra work in the Terrain | none | none | one endpoint |
+
+- **Rejected, if P14 is adopted:**
+  - **Quint Connect's approach, where a matching mapping is enough to pass.** A mapping that lies makes Survey pass.
+  - **Option 1 on its own.** It needs no AI-written code, but the argument combinations grow quickly, and it misses what no known argument reaches and state that only a view shows. Option 1 can be added later on top of P14: run the Map's queries over the snapshot and compare them with the Terrain's actual answers, so a lying snapshot is caught at once.
+- **Relation to D20:** when the Map states a region's storage down to its columns (a `Postgres` region, for example), D20's database reader reads that region's state directly. The snapshot is then produced by the instrument, not reported by the Terrain. P14 covers the time before that instrument exists, and regions whose storage the Map leaves open. Both feed the same `state` channel, so they do not conflict.
+- **Changes to existing decisions:**
+  - D6's "never inspects the Terrain's internal state" becomes "compares the state the Terrain reports in the Map's shape, only as a reason to fail".
+  - D22's "Rejected: comparing Terrain state" is superseded.
+  - `docs/SURVEY.md` gains the endpoint and the channel.
+
 ---
 
 ## Part 3: The proposals do not conflict
@@ -305,6 +345,12 @@ action en() -> Result<Error, Error> { Ok(Error::Bad) }
 | P7 and P8 | P7's entry and exit points are exactly where P8 records. |
 | P7 and P10 | One Pin coverage check serves both regeneration of the index and the check after a Remap. |
 | P10 and P11 | An Amendment that changes the shape of state carries P11's migration function and the result of the Survey that checked it. |
+| P14 and P1 | P1 defines invariants as checks on the Map. P14 does not contradict that; it also applies the same invariants to the Terrain's snapshot. |
+| P14 and P5 | If P5's id renaming is adopted, snapshots are compared under the same renaming. |
+| P14 and P6 | Where latitude is declared (order, for example), snapshots are compared with the same latitude. |
+| P14 and P7 | The snapshot endpoint sits outside P7's entry point, like the rest of `/__nindub/*`. |
+| P14 and P8 | No snapshots are taken in production. P8 checks production by observations alone. |
+| P14 and P11 | Snapshots taken right after a migration show where it went wrong. |
 
 The proposals were also checked against the existing decisions. None overturns the core of D1–D22. Only the places below would change, and each can be handled by adding an entry at D23 or later and marking the old text as superseded, without renumbering:
 
@@ -315,6 +361,7 @@ The proposals were also checked against the existing decisions. None overturns t
 - in D18: the effect of Discretion (P6), the scope of "changes Survey does not detect" (P7), and "only Drift raises an Amendment" (P10)
 - a semantics version in D19 (P1)
 - LANGUAGE's statements about semantics and invariants (P1, P3)
+- D6's "never state" and D22's rejected alternative (P14)
 
 ## Part 4: What remains open
 
