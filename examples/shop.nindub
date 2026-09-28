@@ -197,8 +197,8 @@ impl api::cart {
         let s = skus.get(sku) else Error::NotFound;
 
         let existing = carts.get(user).unwrap_or(CartRow { id: user, lines: [] });
-        // Adding a sku already in the cart increases its quantity.
-        let others = existing.lines.filter(|l| l.sku != sku);
+        // Adding a sku already in the cart increases its quantity, at the
+        // current price, and keeps the line where it was (Amendment 2).
         let current = existing.lines.find(|l| l.sku == sku);
         let qty_now = match current {
             Some(l) => l.qty + qty,
@@ -206,10 +206,12 @@ impl api::cart {
         };
         requires qty_now <= s.stock else Error::OutOfStock;
 
-        carts.insert(CartRow {
-            id: user,
-            lines: others.push(Line { sku, qty: qty_now, unit_price: s.price }),
-        });
+        let merged = Line { sku, qty: qty_now, unit_price: s.price };
+        let lines = match current {
+            Some(_) => existing.lines.map(|l| if l.sku == sku { merged } else { l }),
+            None => existing.lines.push(merged),
+        };
+        carts.insert(CartRow { id: user, lines });
         Ok(())
     }
 

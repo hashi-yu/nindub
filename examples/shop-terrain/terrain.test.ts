@@ -35,7 +35,7 @@ test("previously found Drifts stay fixed", async () => {
         add_sku("u1", "Buy milk", 1, 1)
         products()
       `,
-      "a sku added again moves to the end of the cart": `
+      "a sku added again keeps its place in the cart (Amendment 2, accepted)": `
         grant("u1", "u1")
         add_sku("u1", "A", 1, 10)
         add_sku("u1", "B", 1, 10)

@@ -204,6 +204,7 @@ This closes the loop before the instruments that drive a Terrain's real routes (
 - **The generator reached the interesting states without guidance**: paid orders, refunds, out-of-stock, forbidden staff actions, all within 400 random steps, because ids flow from results into later arguments.
 - **What the Map could not say**: how the staff role is assigned in production (the bootstrap `grant` is a Map-level stand-in), and anything about money formatting, currencies or rounding beyond integer arithmetic.
 - **Survey against a Terrain written from the outline found two real Drifts** (`examples/shop-terrain`): a collation difference in `products()` at step 306, and a cart-line ordering difference that random generation reached in only 2 of 30 runs of 600 steps. Coverage is the open question: the generator picks calls independently, so states that need a specific short sequence (two lines in a cart, a repeat add, a read before `place`) are rare. Found Drifts are kept as replay scripts.
+- **The first Remap.** The cart-line Drift turned out to be the Map's accident, not the Terrain's bug: Amendment 2 was accepted and `add_to_cart` was Remapped to keep a merged line in place. The channel of D17 and D18 worked as designed on its first real use: the Terrain's author noticed, Survey made the difference concrete, the human ruled, the Map changed.
 
 ## Open questions
 
