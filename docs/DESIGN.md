@@ -203,6 +203,7 @@ This closes the loop before the instruments that drive a Terrain's real routes (
 - **Names are global, and it bit once**: `view Order` collided with `struct Order`, and became `OrderDetail`. Regions grouping without namespacing (D21) held, but a large Map will want a rule of thumb for naming.
 - **The generator reached the interesting states without guidance**: paid orders, refunds, out-of-stock, forbidden staff actions, all within 400 random steps, because ids flow from results into later arguments.
 - **What the Map could not say**: how the staff role is assigned in production (the bootstrap `grant` is a Map-level stand-in), and anything about money formatting, currencies or rounding beyond integer arithmetic.
+- **Survey against a Terrain written from the outline found two real Drifts** (`examples/shop-terrain`): a collation difference in `products()` at step 306, and a cart-line ordering difference that random generation reached in only 2 of 30 runs of 600 steps. Coverage is the open question: the generator picks calls independently, so states that need a specific short sequence (two lines in a cart, a repeat add, a read before `place`) are rare. Found Drifts are kept as replay scripts.
 
 ## Open questions
 
@@ -211,7 +212,7 @@ This closes the loop before the instruments that drive a Terrain's real routes (
 - **Observing views in the Terrain.** The accessibility tree is the candidate mechanical Projection for browser UIs. Whether it is stable enough to compare is untested.
 - **Concurrency.** Events and an injected clock cover asynchrony in principle; interleavings have not been thought through.
 - **Changing the Map.** When state shape changes, the Terrain's stored data must migrate. Who writes the migration, and how Survey checks it, is open.
-- **Survey coverage.** How to steer input generation using invariants, and how to report what was explored.
+- **Survey coverage.** How to steer input generation using invariants, and how to report what was explored. The Shop showed the cost of independent random picks: a Drift needing a three-call setup appeared in 2 of 30 runs. Candidates: bias toward calls whose arguments are available (ids in pools), sequences that build on the previous result, and coverage reporting per action outcome.
 
 ## Roadmap
 
@@ -219,4 +220,6 @@ This closes the loop before the instruments that drive a Terrain's real routes (
 2. ~~Write the interpreter so the Map runs alone.~~ Done: `nindub run` (dynamic; no type checker yet).
 3. ~~Write the Survey harness: input generation, mechanical Projection, comparison.~~ Done over the harness protocol (D22): `nindub survey`.
 4. ~~Have AI Realize a TypeScript Terrain and iterate until Survey passes.~~ Done: `examples/todo-terrain`, with its Realize log and first Amendment in its README.
-5. Then attempt something that is not a Todo app.
+5. ~~Then attempt something that is not a Todo app.~~ Done: `examples/shop.nindub` and `examples/shop-terrain`, with its Realize log and Amendment 2 in its README.
+
+Next: the region-kind instruments of D21 (real routes, the browser, the database), the type checker, and `event`.
