@@ -30,7 +30,8 @@
 | **Map**(地図) | Nindub で書かれた、プロジェクトの観測可能な振る舞いをすべて記述した1ファイル。実行でき、正である。 |
 | **Terrain**(地形) | Map の下にある実装(ts / rust / python など)。AI が生成し、人間は何をするかを知るためには読まない。 |
 | **Pin** | Terrain 側の注釈。実現している Map の要素と、その要素を観測するトランスポート(関数呼び出し、HTTP、ブラウザ)を名指しする。Pin は Terrain から Map を指し、逆は決してない。Map ファイルには Pin はない。ツールが集めて索引を生成する。 |
-| **Amendment**(改訂提案) | Map への変更の提案。Realize の途中で AI が、理由と、改訂前の Map に対する Survey 結果を添えて提出する。人間が採用、却下、裁量のいずれかを判断する。Map は採用された Amendment によってのみ変わる。 |
+| **Amendment**(改訂提案) | Map への変更の提案。Realize の途中で AI が、理由と、改訂前の Map に対する Survey 結果を添えて提出する。人間が採用、却下、裁量のいずれかを判断する。採用された Amendment は Remap で適用される。 |
+| **Remap** | 採用された 1 つの Amendment を Map に適用する行為。Map が変わる唯一の方法であり、Terrain が Map に影響する唯一の門。常に部分的な修正であり、Terrain から Map を再生成することでは決してない。Amendment と Remap の関係は、pull request と merge の関係と同じ。 |
 | **Zoom** | Pin をたどって下の階層を見る操作。 |
 | **Scale**(縮尺) | Zoom の階層の深さ。Map の要素は Nindub でさらに分解されるか、Pin で Terrain に紐付くかのどちらか。 |
 | **Observation**(観測) | 入力に応じて Map や Terrain から出てくるものすべて。経路は4つ:結果、view、effect、port。Survey は観測を比べ、内部状態は比べない。 |
