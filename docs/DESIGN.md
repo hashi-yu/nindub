@@ -159,7 +159,7 @@ Reasons: the fastest route to a working loop, which is the project's main risk; 
 ## Roadmap
 
 1. ~~Write `examples/todo.nindub` with a list screen, a detail screen, and a notification email on completion, so that the example exercises views, effects and ports and not only a domain core.~~ Done (draft).
-2. Write the interpreter so the Map runs alone.
+2. ~~Write the interpreter so the Map runs alone.~~ Done: `nindub run` (dynamic; no type checker yet).
 3. Write the Survey harness: input generation, mechanical Projection, comparison.
 4. Have AI Realize a TypeScript Terrain and iterate until Survey passes.
 5. Then attempt something that is not a Todo app.

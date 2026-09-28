@@ -20,6 +20,7 @@
 npm install
 npm run check                                  # 型検査とテスト
 node src/cli.ts parse examples/todo.nindub     # Map の AST を JSON で表示
+node src/cli.ts run examples/todo.nindub       # Map を単体で動かす。:help でコマンド一覧
 ```
 
 ## 文書について

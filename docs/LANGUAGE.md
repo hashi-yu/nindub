@@ -46,6 +46,32 @@ A view body is a sequence of elements. Each element is either content or an affo
 
 Control flow (`if`, `for`, `match`) is ordinary. A view may call queries, never actions directly; actions are reachable only through affordances, so that what the user can do is exactly what the view declares.
 
+## Running a Map alone
+
+The interpreter runs a Map with no Terrain. Every call to an action, query or view returns an **Observation**: the result, the effects emitted, and the requests made to ports with the responses that were injected.
+
+```
+$ node src/cli.ts run examples/todo.nindub
+> :port Directory.email_of Ok("alice@example.com")
+> create("alice", "Buy milk")
+{ "action": "create", "result": { "Ok": "id-1" } }
+> complete("alice", "id-1")
+{ "action": "complete", "result": { "Ok": null },
+  "effects": [{ "to": "alice@example.com", "subject": "Done: Buy milk", "body": "You completed \"Buy milk\"." }],
+  "ports": [{ "Directory.email_of": ["alice"], "response": { "Ok": "alice@example.com" } }] }
+> List("alice")
+```
+
+In the REPL, string literals stand in for ids. Ids and the clock come from injected sources that count up deterministically; port responses are whatever `:port` set.
+
+### Semantics worth knowing
+
+- **An action is atomic.** If it returns `Err`, every state change and every effect it produced is discarded. Invariants are checked after each successful action; a violation is reported as a Map bug, separately from the action's own result.
+- **Locals are snapshots.** `let todo = todos.get(id)` copies; a later `todos[id].done = true` does not change `todo`. Only `state` is mutable, and only through assignment to a place rooted in a state name or through `insert`/`remove` on a state Table.
+- **Queries cannot call actions.** Actions may call other actions; their effects and port requests fold into the caller's Observation.
+- **In a view, an action call is an affordance.** `button("Done", complete(user, id))` records that the button would call `complete` with those arguments; nothing runs. A query call in a view runs. Rendering a view therefore never changes state or emits effects.
+- **`let x = e else err;`** unwraps `Some`/`Ok`, or returns `Err(err)` from the enclosing action or query. `requires c else err;` returns `Err(err)` when `c` is false.
+
 ## Pins live in the Terrain, not in the Map
 
 The Map never names a file, a route or a framework. Where an element is realized is the Terrain's discretion (D5), and the Map must not change because the Terrain was reorganized (D17). So a Pin points from the Terrain up at the Map, not the other way round:

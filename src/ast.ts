@@ -5,6 +5,8 @@
 
 import type { Span } from "./lexer.ts";
 
+export type { Span };
+
 export interface Node {
   span: Span;
 }
