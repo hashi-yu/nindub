@@ -15,3 +15,12 @@
 ## 文書について
 
 文書は英語と日本語の両方で書く。英語版は `NAME.md`、日本語版は `NAME.ja.md` に置き、内容は常に揃える。
+
+## ライセンス
+
+次のいずれかを選んで利用できる。
+
+- Apache License, Version 2.0([LICENSE-APACHE](LICENSE-APACHE))
+- MIT license([LICENSE-MIT](LICENSE-MIT))
+
+明示的に別段の意思表示をしない限り、このプロジェクトに取り込まれることを意図して提出された貢献(Apache-2.0 ライセンスの定義による)は、追加の条件なしに上記のデュアルライセンスで提供されるものとする。
