@@ -22,7 +22,12 @@ npm run check                                  # typecheck + tests
 node src/cli.ts outline examples/todo.nindub   # the territory: regions, roads, signatures
 node src/cli.ts run examples/todo.nindub       # run the Map alone; type :help
 node src/cli.ts parse examples/todo.nindub     # print a Map's AST as JSON
+
+node src/cli.ts serve examples/todo.nindub     # serve the Map itself as a Terrain, then in another shell:
+node src/cli.ts survey examples/todo.nindub --terrain http://127.0.0.1:PORT --steps 200
 ```
+
+See [docs/SURVEY.md](docs/SURVEY.md) for how a Terrain answers Survey.
 
 ## Documentation
 

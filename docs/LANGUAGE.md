@@ -2,7 +2,7 @@
 
 English | [日本語](LANGUAGE.ja.md)
 
-**Status: draft.** The syntax is decided by example, and the current example is [`examples/todo.nindub`](../examples/todo.nindub). This document explains what is in that file. The parser, the interpreter (`nindub run`) and the outline (`nindub outline`) exist; Survey does not yet.
+**Status: draft.** The syntax is decided by example, and the current example is [`examples/todo.nindub`](../examples/todo.nindub). This document explains what is in that file. The parser, the interpreter (`nindub run`), the outline (`nindub outline`) and Survey over the harness protocol (`nindub survey`, see [SURVEY.md](SURVEY.md)) exist.
 
 ## Flavor
 

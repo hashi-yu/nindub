@@ -65,6 +65,9 @@ export interface Observation {
   result: Value;
   effects: Value[]; // struct values, one per `emit`
   ports: PortRequest[];
+  // The injected values this call consumed, in order. Survey hands the same
+  // values to the Terrain so that both sides see the same world (D8).
+  injected: { clock: bigint[]; ids: string[] };
 }
 
 export interface Injections {
@@ -162,7 +165,15 @@ export class Runtime {
     if (args.length !== item.params.length) {
       throw new RuntimeError(`${name} takes ${item.params.length} arguments, got ${args.length}`, item.span);
     }
-    const observation: Observation = { kind: item.kind, name, args, result: UNIT, effects: [], ports: [] };
+    const observation: Observation = {
+      kind: item.kind,
+      name,
+      args,
+      result: UNIT,
+      effects: [],
+      ports: [],
+      injected: { clock: [], ids: [] },
+    };
     const frame: Frame = { observation, sink: item.kind === "view" ? [] : null };
     this.frames.push(frame);
     const snapshot = new Map(this.state);
@@ -609,6 +620,8 @@ export class Runtime {
     const obs = this.call(name, args);
     parent.effects.push(...obs.effects);
     parent.ports.push(...obs.ports);
+    parent.injected.clock.push(...obs.injected.clock);
+    parent.injected.ids.push(...obs.injected.ids);
     if (obs.kind === "action" && span) {
       // Actions called from other actions are allowed; from queries they
       // would mutate state through a read, so refuse.
@@ -689,11 +702,15 @@ export class Runtime {
       case "injected": {
         if (recv.type === "Clock" && m === "now") {
           need(0);
-          return { t: "instant", v: this.injections.clock() };
+          const v = this.injections.clock();
+          this.frame().observation.injected.clock.push(v);
+          return { t: "instant", v };
         }
         if (recv.type === "IdSource" && m === "fresh") {
           need(0);
-          return { t: "id", v: this.injections.ids() };
+          const v = this.injections.ids();
+          this.frame().observation.injected.ids.push(v);
+          return { t: "id", v };
         }
         break;
       }
