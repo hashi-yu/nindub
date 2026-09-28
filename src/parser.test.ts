@@ -186,6 +186,29 @@ test("patterns: wildcard, binding, variant with payload", () => {
   assert.ok(c!.kind === "path" && c!.args[0]!.kind === "wildcard");
 });
 
+test("a trailing match or if is the block's value; keywords may be method names", () => {
+  const map = parse(`
+    map M;
+    fn f(s: Status) -> Text {
+      if s == Status::A { text("x"); }
+      match s {
+        Status::A => "a",
+        _ => "b",
+      }
+    }
+    query g(xs: Vec<Int>) -> Int { xs.map(|x| x).sum() }
+    query h() -> Vec<Int> { [1, 2] }
+  `);
+  const f = item(map.items, "fn", "f");
+  const [first, tail] = body(f).stmts;
+  assert.ok(first!.kind === "expr" && first!.expr.kind === "if" && !first!.terminated);
+  assert.ok(tail!.kind === "expr" && tail!.expr.kind === "match" && !tail!.terminated);
+  const g = body(item(map.items, "query", "g")).stmts[0]!;
+  assert.ok(g.kind === "expr" && g.expr.kind === "method" && g.expr.method === "sum");
+  const h = body(item(map.items, "query", "h")).stmts[0]!;
+  assert.ok(h.kind === "expr" && h.expr.kind === "vec" && h.expr.items.length === 2);
+});
+
 test("reports position on error", () => {
   assert.throws(
     () => parse(`map M;\nstate todos Table<Todo>;`),

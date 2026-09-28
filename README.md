@@ -10,7 +10,7 @@ You write your whole project as a single **Map** in Nindub. The Map is executabl
 
 We call this way of working **Nindub Driven Development**.
 
-See [GLOSSARY.md](GLOSSARY.md) for the vocabulary, [docs/DESIGN.md](docs/DESIGN.md) for the design decisions made so far and why, and [docs/LANGUAGE.md](docs/LANGUAGE.md) with [examples/todo.nindub](examples/todo.nindub) for what a Map looks like.
+See [GLOSSARY.md](GLOSSARY.md) for the vocabulary, [docs/DESIGN.md](docs/DESIGN.md) for the design decisions made so far and why, and [docs/LANGUAGE.md](docs/LANGUAGE.md) with [examples/todo.nindub](examples/todo.nindub) (small) and [examples/shop.nindub](examples/shop.nindub) (an order-management system) for what a Map looks like.
 
 ## Development
 

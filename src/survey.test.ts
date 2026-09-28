@@ -33,6 +33,19 @@ test("a Map surveyed against itself has no drift, and the run is deterministic",
   assert.ok(a.steps.some((s) => s.map.effects.length > 0), "some completion sent mail");
 });
 
+test("the Shop Map surveys against itself: richer types, nested regions, ports with Ok and Err", async () => {
+  const shopSrc = readFileSync(new URL("../examples/shop.nindub", import.meta.url), "utf8");
+  const r = await survey(parse(shopSrc), terrainOf(shopSrc), { seed: 9, steps: 400 });
+  assert.equal(r.drift, null, JSON.stringify(r.drift));
+  assert.equal(r.error, null, JSON.stringify(r.error));
+  const results = r.steps.map((s) => JSON.stringify(s.map.result));
+  // The generator reaches the interesting outcomes, not only the errors.
+  assert.ok(r.steps.some((s) => s.call.startsWith("place(") && s.map.effects.length > 0), "an order was placed and paid");
+  assert.ok(results.some((x) => x.includes("Forbidden")), "a non-staff user was refused");
+  assert.ok(results.some((x) => x.includes("OutOfStock")), "stock ran out");
+  assert.ok(r.steps.some((s) => s.map.ports.some((p) => p.fn === "refund")), "a refund was requested");
+});
+
 test("a Terrain that forgets the ownership check drifts in the result channel", async () => {
   const buggy = todoSrc.replace(
     /action complete\(user: UserId, id: TodoId\) -> Result<\(\), Error> \{\n        let todo = todos.get\(id\) else Error::NotFound;\n        requires todo.owner == user else Error::Forbidden;/,

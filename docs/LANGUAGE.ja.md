@@ -58,6 +58,7 @@ impl api {
 | `region name: Kind(args) { roads; items }` | 領土の区画と、そこに住むもの。 | 種類が指定する計器を通して |
 | `road name -> region;` | 囲んでいる region が別の region に到達してよいこと。 | Terrain への依存制約として |
 | `impl region { items }` | region が宣言した要素の本体。 | — |
+| `fn name(args) -> T { ... }` | 純粋な補助関数。同じ region の本体から呼べ、外からは呼べない。状態の変更、emit、port の呼び出し、action の呼び出しはできない。region で宣言しても、`impl` でだけ定義しても(非公開)よい。 | — |
 | `struct`、`enum`、`type`、`opaque` | 型。`opaque` は Map が中身を見ない型(外部ディレクトリのユーザーなど)。 | — |
 | `inject name: Kind;` | Map が必要とする非決定性の供給源。`Clock`、`IdSource`、`Random`。Survey が両側に与える(D8)。 | 与えた値 |
 | `state name: Type;` | Map が保持する状態。何らかの query か view から到達できなければならない(D9)。 | 直接には決して見ない(D6) |
@@ -75,7 +76,9 @@ impl api {
 - `emit EffectName { ... };` — effect を記録する。
 - `Port.fn(...)` — port にリクエストを送る。応答は Survey が注入したものになる。
 - `inject` した値は `clock.now()`、`ids.fresh()` のように使う。
-- コレクション:`Table<T>`(`id` で引く)に `get`、`insert`、`remove`、`filter`、`all`、`unique_by`、`sorted_by`。`Vec<T>`、`Option<T>`。
+- コレクション:`Table<T>`(`id` で引く)に `get`、`insert`、`remove`、`contains`、`len`、`is_empty` と列のメソッド。`Vec<T>` はリテラル `[a, b]` と `filter`、`map`、`all`、`any`、`find`、`first`、`contains`、`push`(新しい Vec を返す)、`sum`、`unique_by`、`sorted_by`、`len`、`is_empty`。`Option<T>` は `is_some`、`is_none`、`unwrap_or`。
+- `.` の後ではキーワードも普通の名前になる。ファイルの先頭が `map` でも `xs.map(...)` と書ける。
+- ブロックの値は、`;` のない最後の式である。本体の末尾の `if` や `match` は本体の値になる。
 
 ## view の中
 

@@ -58,6 +58,7 @@ impl api {
 | `region name: Kind(args) { roads; items }` | A bounded part of the territory and what lives in it. | Through the instrument its kind names |
 | `road name -> region;` | That the enclosing region may reach another. | As a dependency constraint on the Terrain |
 | `impl region { items }` | Bodies for items the region declared. | — |
+| `fn name(args) -> T { ... }` | A pure helper: callable from bodies in its region, never from outside. It may not change state, emit, call ports or call actions. May be declared in the region or defined only in an `impl` (private). | — |
 | `struct`, `enum`, `type`, `opaque` | Types. `opaque` names a type whose contents the Map never sees (users from an external directory). | — |
 | `inject name: Kind;` | A source of nondeterminism the Map needs: `Clock`, `IdSource`, `Random`. Supplied by Survey to both sides (D8). | The values supplied |
 | `state name: Type;` | State the Map keeps. Must be reachable from some query or view (D9). | Never directly (D6) |
@@ -75,7 +76,9 @@ impl api {
 - `emit EffectName { ... };` — record an effect.
 - `Port.fn(...)` — make a request to a port. The response is whatever Survey injects.
 - `inject`ed values are used as `clock.now()`, `ids.fresh()`.
-- Collections: `Table<T>` (keyed by `id`) with `get`, `insert`, `remove`, `filter`, `all`, `unique_by`, `sorted_by`; `Vec<T>`; `Option<T>`.
+- Collections: `Table<T>` (keyed by `id`) with `get`, `insert`, `remove`, `contains`, `len`, `is_empty` and the sequence methods; `Vec<T>` with literals `[a, b]` and `filter`, `map`, `all`, `any`, `find`, `first`, `contains`, `push` (returns a new Vec), `sum`, `unique_by`, `sorted_by`, `len`, `is_empty`; `Option<T>` with `is_some`, `is_none`, `unwrap_or`.
+- After `.`, keywords are ordinary names: `xs.map(...)` is fine although `map` opens the file.
+- A block's value is its last expression when it has no `;`; an `if` or `match` at the end of a body is the body's value.
 
 ## Inside a view
 

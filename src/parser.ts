@@ -24,6 +24,7 @@ const ITEM_KEYWORDS = new Set([
   "action",
   "query",
   "view",
+  "fn",
   "region",
   "impl",
 ]);
@@ -61,6 +62,10 @@ const BINARY_PRECEDENCE: Record<string, number> = {
   "/": 5,
 };
 const RANGE_PRECEDENCE = 2.5; // between `&&` and comparisons, like Rust
+
+function isBlockLike(e: ast.Expr): boolean {
+  return e.kind === "if" || e.kind === "match" || e.kind === "block";
+}
 
 export function parse(source: string): ast.MapDecl {
   return new Parser(lex(source)).parseMap();
@@ -124,6 +129,13 @@ class Parser {
     const t = this.peek();
     if (t.kind !== "ident") this.fail(`expected ${what}`);
     if (RESERVED.has(t.text)) this.fail(`\`${t.text}\` is a keyword and cannot be used as ${what}`);
+    return this.next().text;
+  }
+
+  // After `.`, keywords are fine as names: `xs.map(...)`.
+  private expectMemberName(): string {
+    const t = this.peek();
+    if (t.kind !== "ident") this.fail("expected field or method name");
     return this.next().text;
   }
 
@@ -281,7 +293,8 @@ class Parser {
         return { kind: "effect", name, fields, ...base(this.spanFrom(start)) };
       }
       case "action":
-      case "query": {
+      case "query":
+      case "fn": {
         const name = this.expectIdent(`${t.text} name`);
         const params = this.parseParams();
         this.expect("->");
@@ -387,7 +400,9 @@ class Parser {
     while (!this.at("}")) {
       stmts.push(this.parseStmt());
       const last = stmts[stmts.length - 1]!;
-      if (last.kind === "expr" && !last.terminated && !this.at("}")) {
+      // An expression needs a `;` unless it ends the block (its value is the
+      // block's value) or is block-like (`if`, `match`, `{}`), as in Rust.
+      if (last.kind === "expr" && !last.terminated && !this.at("}") && !isBlockLike(last.expr)) {
         this.fail("expected `;` or `}` after expression");
       }
     }
@@ -438,9 +453,10 @@ class Parser {
       children = this.parseBlock();
     }
 
-    // Block-like expressions (if / match / block) need no `;`, as in Rust.
-    const blockLike = expr.kind === "if" || expr.kind === "match" || expr.kind === "block";
-    const terminated = this.eat(";") || children !== null || blockLike;
+    // `terminated` means "not the block's tail value": a `;` or children.
+    // A block-like expression without `;` at the end of a block is the
+    // block's value (`fn f() -> Int { match x { ... } }`).
+    const terminated = this.eat(";") || children !== null;
     return { kind: "expr", expr, children, terminated, span: this.spanFrom(start) };
   }
 
@@ -509,7 +525,7 @@ class Parser {
     for (;;) {
       const start = expr.span.start;
       if (this.eat(".")) {
-        const name = this.expectIdent("field or method name");
+        const name = this.expectMemberName();
         if (this.at("(")) {
           const args = this.parseArgs();
           expr = { kind: "method", receiver: expr, method: name, args, span: this.spanFrom(start) };
@@ -584,6 +600,19 @@ class Parser {
       }
       if (t.text === "|") {
         return this.parseClosure();
+      }
+      if (t.text === "[") {
+        this.next();
+        const items: ast.Expr[] = [];
+        const saved = this.noStructLiteral;
+        this.noStructLiteral = false;
+        while (!this.at("]")) {
+          items.push(this.parseExpr());
+          if (!this.eat(",")) break;
+        }
+        this.noStructLiteral = saved;
+        this.expect("]");
+        return { kind: "vec", items, span: this.spanFrom(start) };
       }
       this.fail("expected expression");
     }

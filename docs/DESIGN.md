@@ -193,10 +193,21 @@ This closes the loop before the instruments that drive a Terrain's real routes (
 - A Map runs without a Terrain, so it is also a structural prototype: screens and operations can be exercised before any implementation exists.
 - Because the whole project is one Map, an AI agent that reads the Map has read the project. This is the original "miniature" idea, recovered from the other direction.
 
+## Findings from the Shop Map (roadmap item 5)
+
+`examples/shop.nindub` is the first Map that is not a Todo app: a catalog with stock, per-customer carts, orders with a five-state status machine, a payment port that can decline, shipping and receipts as effects, staff permissions with a bootstrap, and six screens. What it showed:
+
+- **It fits in one file, and the outline still reads at a glance.** About 470 lines with comments (Todo: about 210). `nindub outline --depth 2` shows the whole system in 60 lines; nested regions (`api::catalog`, `api::cart`, `api::orders`, `api::staff`) are what keep the api region legible.
+- **Atomic actions carried the hardest case for free.** `place` takes stock, then charges; a declined charge fails the action and the stock comes back. Nothing had to be written for the rollback.
+- **The language needed four small things**, each found by the Map refusing to parse or run: keywords as method names (`xs.map` collided with `map Shop;`), Vec literals and `push`/`sum`/`find`, a trailing `match` as a body's value, and a place for view helpers, which became `fn`: a pure function, not observed, that queries and views may call.
+- **Names are global, and it bit once**: `view Order` collided with `struct Order`, and became `OrderDetail`. Regions grouping without namespacing (D21) held, but a large Map will want a rule of thumb for naming.
+- **The generator reached the interesting states without guidance**: paid orders, refunds, out-of-stock, forbidden staff actions, all within 400 random steps, because ids flow from results into later arguments.
+- **What the Map could not say**: how the staff role is assigned in production (the bootstrap `grant` is a Map-level stand-in), and anything about money formatting, currencies or rounding beyond integer arithmetic.
+
 ## Open questions
 
 - **Syntax.** Rust-flavored (D16) and drafted in `examples/todo.nindub`; the view vocabulary in particular will change once something renders it.
-- **Size at scale.** A Todo app fits in one Map. Whether an authenticated, multi-tenant application does is unknown and is the real test of D3 and D4.
+- **Size at scale.** A Todo app and a small shop fit in one Map (see the findings above). Whether an authenticated, multi-tenant application does is still unknown.
 - **Observing views in the Terrain.** The accessibility tree is the candidate mechanical Projection for browser UIs. Whether it is stable enough to compare is untested.
 - **Concurrency.** Events and an injected clock cover asynchrony in principle; interleavings have not been thought through.
 - **Changing the Map.** When state shape changes, the Terrain's stored data must migrate. Who writes the migration, and how Survey checks it, is open.
