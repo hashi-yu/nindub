@@ -89,7 +89,7 @@ The Nindub tool collects Pins into a generated index next to the Map (`todo.pins
 
 ## Amendments
 
-While Realizing, AI will find places where the Map is wrong, incomplete or silent. It does not edit the Map. It submits an Amendment: a diff to the Map, with a reason, and the Survey result of the current Terrain against the unamended Map so that the behavior the change would permit is visible. A human accepts it (the Map changes), rejects it (the Terrain must change), or rules it discretion (the Map stays silent on purpose). See D18.
+While Realizing, AI will find places where the Map is wrong, incomplete or silent. It does not edit the Map. It submits an Amendment: a diff to the Map, with a reason, and the Survey result of the current Terrain against the unamended Map so that the behavior the change would permit is visible. A human accepts it (a Remap: the Map changes), rejects it (the Terrain must change), or rules it discretion (the Map stays silent on purpose). See D17 and D18.
 
 ## Not yet designed
 

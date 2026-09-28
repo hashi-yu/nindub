@@ -109,9 +109,11 @@ Nindub borrows Rust's surface: `struct`, `enum`, `Result<T, E>`, `match`, `let .
 
 **Rejected:** TypeScript-flavored syntax (too permissive; errors and absence are not first-class), Elm-flavored (unfamiliar to most readers and to AI), and a syntax invented from scratch (every hour spent on novel syntax is an hour not spent on the interpreter, and AI reads Rust well). A first draft put Pins in the Map as `#[pin(...)]` attributes; D17 removed them.
 
-### D17. The Map changes only when a human accepts an Amendment
+### D17. The Map changes only by Remap
 
-Nothing in the Map may change because the Terrain changed. The Map changes for exactly one reason: a human accepted an Amendment (D18). Reorganizing the Terrain, renaming its files, switching its framework or database, none of these touch the Map.
+Nothing in the Map may change because the Terrain changed. The Map changes for exactly one reason: a human accepted an Amendment (D18) and it was applied. That act is a **Remap**. Reorganizing the Terrain, renaming its files, switching its framework or database, none of these touch the Map.
+
+A Remap is always the application of one accepted Amendment: a partial correction. It is never a regeneration of the Map from the Terrain; that direction was rejected in D1, and the Terrain informs the Map only through this one gate. What is mechanical is Survey detecting Drift, the tool regenerating the Pin index, and, where a Drift determines it, the tool drafting the Amendment; the ruling is never mechanical.
 
 Consequently Pins are not written in the Map. A Pin is an annotation in the Terrain naming the Map element it realizes and the transport through which it is observed. The Nindub tool collects Pins into a generated index committed next to the Map; Zoom and viewers use the index, and a viewer may show Pins overlaid on the Map. The Map file itself never names a file, route or framework.
 
@@ -125,7 +127,7 @@ A human makes one of three rulings:
 
 | Ruling | Meaning | Effect |
 |---|---|---|
-| Accept | the Map was wrong or incomplete | the Map changes; Survey runs against the new Map |
+| Accept | the Map was wrong or incomplete | Remap: the Map changes; Survey runs against the new Map |
 | Reject | the Map is right | the Terrain must change; Survey runs against the old Map |
 | Discretion | the Map is silent and should stay so | nothing changes; the point is recorded as unobserved |
 
