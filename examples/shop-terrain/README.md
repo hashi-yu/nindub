@@ -31,12 +31,13 @@ This Terrain was written from the outline and the intent, not by transcribing th
 
 1. **Seed 1, step 306, `products()`: Drift in result.** The Map sorts by name with plain string comparison (code units: `"Buy milk"` before `"a"`); the Terrain used `localeCompare` (`"a"` before `"Buy milk"`). A collation difference of exactly the kind that separates a JavaScript sort from a database `ORDER BY`. Fixed in the Terrain.
 2. **Seeds 1–5 × 400: no Drift.** But one known difference remained uncaught: adding a sku already in the cart. The Map removes the old line and appends the merged one, so the line moves to the end; the Terrain updated it in place. **Seeds 10–39 × 600: Drift in 2 of 30 runs**, both around step 480, both on `cart(...)`. A 7-step script reproduces it. Two lessons: the random generator does reach such states, but rarely, because it needs a cart with two skus, a repeat add, and a read before a `place` empties the cart; and once found, a Drift is worth keeping as a script (`terrain.test.ts`), which is what the reproducing sequence is for.
-3. **The Terrain now conforms** (merged line moves to the end), and Amendment 2 below asks whether the Map meant that.
+3. **The Terrain was made to conform** (merged line moved to the end) while Amendment 2 asked whether the Map meant that.
+4. **Amendment 2 accepted; first Remap.** The Map now keeps a merged line in place; the Terrain went back to updating in place. The 7-step script stays in the test and now checks the accepted behavior on both sides.
 
 ## Amendment 2: should a merged cart line move to the end?
 
-`add_to_cart` for a sku already in the cart is written in the Map as `others.push(Line { ... })`: the merged line goes last. Whether that is intent or an accident of how the body was written is a human question (D18). Most carts keep a line where it was.
+`add_to_cart` for a sku already in the cart was written in the Map as `others.push(Line { ... })`: the merged line went last. Whether that was intent or an accident of how the body was written is a human question (D18). Most carts keep a line where it was.
 
-- **Accept**: change the Map to keep the line's position (and Remap); the Terrain reverts to updating in place.
-- **Reject**: the Map means what it says; the Terrain stays as it is now.
-- **Discretion**: declare cart order unobservable, for example by having `cart` return lines sorted by sku, so neither side's order matters.
+The options were: **accept** (Map keeps the line's position; Remap), **reject** (Map means what it says), **discretion** (make cart order unobservable).
+
+**Ruling: accept** (2026-09-28). It was an accident of the body, not intent. The Map was Remapped: `add_to_cart` now maps over the existing lines, replacing the matching one, and appends only when the sku is new. This is the first Remap in the project, and it went the way D18 describes: the Terrain's author noticed, Survey made the difference concrete, the human ruled, the Map changed.

@@ -13,10 +13,16 @@ export async function addToCart(deps: Deps, user: UserId, sku: SkuId, qty: numbe
   const wanted = (existing?.qty ?? 0) + qty;
   if (wanted > item.stock) return err("OutOfStock");
 
-  // The Map moves a merged line to the end of the cart (and re-prices it).
-  // This Terrain first updated it in place; Survey caught the difference
-  // after ~480 random steps (see README, Realize log and Amendment 2).
-  cart.lines = [...cart.lines.filter((l) => l.sku !== sku), { sku, qty: wanted, unit_price: item.price }];
+  // A merged line keeps its place and takes the current price. The Map
+  // first said "moves to the end"; Survey caught the difference after
+  // ~480 random steps, Amendment 2 was accepted, and the Map was Remapped
+  // to this (see README).
+  if (existing) {
+    existing.qty = wanted;
+    existing.unit_price = item.price;
+  } else {
+    cart.lines.push({ sku, qty, unit_price: item.price });
+  }
   deps.store.carts.put(cart);
   return ok(null);
 }
