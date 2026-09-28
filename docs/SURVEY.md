@@ -28,6 +28,25 @@ create("u1", "Buy milk")
 
 Views are not surveyed yet; that needs the browser instrument.
 
+## Planning the next call (`--plan`)
+
+By default step 1 picks a call at random. With `--plan`, Survey uses the Map to decide what to do next. The Map is a program Survey can run and copy, so it can try a call before making it; the Terrain is only ever sent the call that was chosen.
+
+- **Read what was just written.** Every state cell an action wrote (`carts[u2]`, say) is owed a read until a query has read it on both sides. When something is owed, the next call is the query whose reads cover the most of it, with arguments drawn from the ids seen so far. Queries are pure, so candidates are tried on the Map itself. A Drift in state therefore shows at the first step where the Terrain's output can show it, instead of whenever a random read happens to come by.
+- **Otherwise, do something new.** Candidate actions are tried on a fork of the Map, and the one that makes the rarest kind of step in this run is made. A kind of step is the action, the branches its body took, and the shape of what it wrote: how many lines a cart has, which status an order is in, whether a sequence grew or was reordered. Candidate arguments favour the ids found in recently written cells, so that one call can build on the last. This is coverage guidance as in fuzzing, with the Map's own control flow and state as the coverage.
+
+Planned reads are marked `*` in the report. When a Drift is found, the report also names the step that last wrote each cell the drifting call read:
+
+```
+ 9   add_to_cart("u2", "id-1", 2)                   ok
+10 * cart("u2")                                     DRIFT in result
+    map:     [{"sku":"id-5",...},{"sku":"id-1",...}]
+    terrain: [{"sku":"id-1",...},{"sku":"id-5",...}]
+    carts[u2] was last written at step 9
+```
+
+Measured on the Shop before Amendment 2 (the Map moved a merged cart line to the end, the Terrain kept it in place), seeds 10 to 39: random generation found the Drift in 2 of 30 runs of 600 steps, planning in 16 of 30; with 1200 steps, 3 of 30 and 23 of 30. Planning spends roughly half its steps on reads. What it cannot do is reach state that no query with known arguments reads; that stays a limit of observing a Terrain from outside.
+
 ## The harness protocol
 
 The first instrument is two HTTP endpoints on the Terrain. It is deliberately minimal: it lets the loop close before the instruments that drive a Terrain's real routes and screens exist (D22).

@@ -234,3 +234,35 @@ test("locals are snapshots of state", () => {
   );
   assert.deepEqual(json(rt.call("bump", [id("a")]).result), { Ok: 3 });
 });
+
+test("an observation records the cells it read and wrote, and the branches it took", () => {
+  const rt = todo();
+  const created = rt.call("create", [alice, text("Buy milk")]);
+  assert.deepEqual(created.writes, ["todos[id-1]"]);
+  assert.ok(created.branches.some((b) => b.endsWith("#ok")), "requires passed");
+
+  const listed = rt.call("list", [alice]);
+  assert.deepEqual(listed.reads, ["todos[*]"]);
+  assert.deepEqual(listed.writes, []);
+
+  const got = rt.call("get", [alice, id("id-1")]);
+  assert.deepEqual(got.reads, ["todos[id-1]"]);
+
+  const failed = rt.call("create", [alice, text("")]);
+  assert.deepEqual(failed.writes, [], "a failed action wrote nothing");
+  assert.ok(failed.branches.some((b) => b.endsWith("#fail")));
+});
+
+test("fork copies the state and leaves the original alone", () => {
+  const rt = todo();
+  rt.call("create", [alice, text("Buy milk")]);
+  const fork = rt.fork({ ids: () => "id-9", clock: () => 5n });
+  fork.call("create", [alice, text("Call mom")]);
+  assert.deepEqual(json(fork.getState("todos")), [
+    { id: "id-1", owner: "alice", title: "Buy milk", done: false, created_at: 0 },
+    { id: "id-9", owner: "alice", title: "Call mom", done: false, created_at: 5 },
+  ]);
+  assert.deepEqual(json(rt.getState("todos")), [
+    { id: "id-1", owner: "alice", title: "Buy milk", done: false, created_at: 0 },
+  ]);
+});

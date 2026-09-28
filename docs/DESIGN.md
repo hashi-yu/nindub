@@ -213,7 +213,7 @@ This closes the loop before the instruments that drive a Terrain's real routes (
 - **Observing views in the Terrain.** The accessibility tree is the candidate mechanical Projection for browser UIs. Whether it is stable enough to compare is untested.
 - **Concurrency.** Events and an injected clock cover asynchrony in principle; interleavings have not been thought through.
 - **Changing the Map.** When state shape changes, the Terrain's stored data must migrate. Who writes the migration, and how Survey checks it, is open.
-- **Survey coverage.** How to steer input generation using invariants, and how to report what was explored. The Shop showed the cost of independent random picks: a Drift needing a three-call setup appeared in 2 of 30 runs. Candidates: bias toward calls whose arguments are available (ids in pools), sequences that build on the previous result, and coverage reporting per action outcome.
+- **Survey coverage.** How to steer input generation using invariants, and how to report what was explored. The Shop showed the cost of independent random picks: a Drift needing a three-call setup appeared in 2 of 30 runs. Candidates: bias toward calls whose arguments are available (ids in pools), sequences that build on the previous result, and coverage reporting per action outcome. First result: `nindub survey --plan` (read what was just written; otherwise make the rarest kind of step, tried on a fork of the Map) finds that Drift in 16 of 30 runs of 600 steps and 23 of 30 of 1200 (`docs/SURVEY.md`). Whether it becomes the default is not decided.
 
 ## Roadmap
 

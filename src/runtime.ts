@@ -68,6 +68,16 @@ export interface Observation {
   // The injected values this call consumed, in order. Survey hands the same
   // values to the Terrain so that both sides see the same world (D8).
   injected: { clock: bigint[]; ids: string[] };
+  // The state cells this call read and wrote, as `name` (a whole cell),
+  // `name[key]` (one row of a Table) or `name[*]` (a whole Table). Survey
+  // uses them to plan which call to make next: a cell an action wrote is
+  // worth reading before anything else changes it.
+  reads: string[];
+  writes: string[];
+  // The branches the call took, in order: `match` arms, `if` sides,
+  // `requires` and `let ... else` outcomes, each named by its position in
+  // the Map. Survey uses them to tell a new path from a repeated one.
+  branches: string[];
 }
 
 export interface Injections {
@@ -105,8 +115,13 @@ export class Runtime {
   private readonly state = new Map<string, Value>();
   private readonly injections: Required<Injections>;
   private frames: Frame[] = [];
+  // Dependency tracking for the outermost call: which state a Table value
+  // came from (so a row read can be named), and the cells read so far.
+  private readonly origins = new Map<Value, string>();
+  private readonly reads = new Set<string>();
+  private readonly path: string[] = [];
 
-  constructor(map: ast.MapDecl, injections: Injections = {}) {
+  constructor(map: ast.MapDecl, injections: Injections = {}, resolved?: ResolvedMap) {
     this.map = map;
     let tick = 0n;
     let counter = 0;
@@ -119,7 +134,7 @@ export class Runtime {
           throw new RuntimeError(`no response injected for ${port}.${fn}`);
         }),
     };
-    this.resolved = resolve(map);
+    this.resolved = resolved ?? resolve(map);
     for (const item of this.resolved.items) {
       if ("name" in item) this.items.set(item.name, item);
       if (item.kind === "enum") this.enums.set(item.name, item);
@@ -137,6 +152,17 @@ export class Runtime {
   }
 
   // ---------------------------------------------------------------- public API
+
+  /**
+   * A copy of this Runtime with the same state and its own injections.
+   * Values are immutable, so the copy is cheap; Survey uses forks to try a
+   * call before making it.
+   */
+  fork(injections: Injections = {}): Runtime {
+    const child = new Runtime(this.map, injections, this.resolved);
+    for (const [k, v] of this.state) child.state.set(k, v);
+    return child;
+  }
 
   /** Current state, by name. */
   getState(name: string): Value {
@@ -178,9 +204,18 @@ export class Runtime {
       effects: [],
       ports: [],
       injected: { clock: [], ids: [] },
+      reads: [],
+      writes: [],
+      branches: [],
     };
     const frame: Frame = { observation, sink: item.kind === "view" ? [] : null };
     this.frames.push(frame);
+    const outermost = this.frames.length === 1;
+    if (outermost) {
+      this.origins.clear();
+      this.reads.clear();
+      this.path.length = 0;
+    }
     const snapshot = new Map(this.state);
     try {
       const env = this.rootEnv();
@@ -198,7 +233,12 @@ export class Runtime {
           observation.effects = [];
         } else {
           this.checkInvariants();
+          observation.writes = this.diffState(snapshot);
         }
+      }
+      if (outermost) {
+        observation.reads = [...this.reads];
+        observation.branches = [...this.path];
       }
       return observation;
     } catch (e) {
@@ -207,6 +247,37 @@ export class Runtime {
     } finally {
       this.frames.pop();
     }
+  }
+
+  // ---------------------------------------------------------------- dependency tracking
+
+  // The cells whose value differs between `before` and the current state.
+  private diffState(before: Map<string, Value>): string[] {
+    const out: string[] = [];
+    for (const [name, after] of this.state) {
+      const prev = before.get(name);
+      if (!prev || prev === after) continue;
+      if (prev.t === "table" && after.t === "table") {
+        for (const key of new Set([...prev.rows.keys(), ...after.rows.keys()])) {
+          const a = prev.rows.get(key);
+          const b = after.rows.get(key);
+          if (!a || !b || !equal(a, b)) out.push(`${name}[${key}]`);
+        }
+      } else if (!equal(prev, after)) {
+        out.push(name);
+      }
+    }
+    return out;
+  }
+
+  private took(span: ast.Span, which: string) {
+    this.path.push(`${span.start.line}:${span.start.col}#${which}`);
+  }
+
+  // A read of one row of a state Table (by key), or of the whole Table.
+  private noteRead(table: Value, key: string | null) {
+    const name = this.origins.get(table);
+    if (name) this.reads.add(key === null ? `${name}[*]` : `${name}[${key}]`);
   }
 
   /** Evaluate an expression at top level (REPL). Calls run for real. */
@@ -288,8 +359,10 @@ export class Runtime {
         if (stmt.orElse) {
           // `let x = e else err;` unwraps Some/Ok, or returns Err(err).
           if (isVariant(value, "Option", "Some") || isVariant(value, "Result", "Ok")) {
+            this.took(stmt.span, "ok");
             value = value.payload[0]!;
           } else if (isVariant(value, "Option", "None") || isVariant(value, "Result", "Err")) {
+            this.took(stmt.span, "else");
             throw new ReturnSignal(err(this.evalExpr(stmt.orElse, env)));
           } else {
             throw new RuntimeError(`let-else needs an Option or Result, got ${describe(value)}`, stmt.value.span);
@@ -302,8 +375,10 @@ export class Runtime {
       }
       case "requires": {
         if (!truthy(this.evalExpr(stmt.condition, env))) {
+          this.took(stmt.span, "fail");
           throw new ReturnSignal(err(this.evalExpr(stmt.orElse, env)));
         }
+        this.took(stmt.span, "ok");
         return UNIT;
       }
       case "assign": {
@@ -356,7 +431,10 @@ export class Runtime {
 
   private iterate(v: Value, span: ast.Span): Value[] {
     if (v.t === "vec") return v.items;
-    if (v.t === "table") return [...v.rows.values()];
+    if (v.t === "table") {
+      this.noteRead(v, null);
+      return [...v.rows.values()];
+    }
     if (v.t === "range") {
       const out: Value[] = [];
       const end = v.inclusive ? v.end : v.end - 1n;
@@ -475,7 +553,9 @@ export class Runtime {
       case "index": {
         const table = this.evalExpr(e.object, env);
         if (table.t !== "table") throw new RuntimeError(`cannot index into ${describe(table)}`, e.span);
-        const row = table.rows.get(keyOf(this.evalExpr(e.index, env)));
+        const key = keyOf(this.evalExpr(e.index, env));
+        this.noteRead(table, key);
+        const row = table.rows.get(key);
         if (!row) throw new RuntimeError("no such row", e.index.span);
         return row;
       }
@@ -496,15 +576,22 @@ export class Runtime {
       case "closure":
         return { t: "closure", params: e.params, body: e.body, env };
       case "if": {
-        if (truthy(this.evalExpr(e.condition, env))) return this.evalBlock(e.then, env);
+        if (truthy(this.evalExpr(e.condition, env))) {
+          this.took(e.span, "then");
+          return this.evalBlock(e.then, env);
+        }
+        this.took(e.span, "else");
         if (!e.otherwise) return UNIT;
         return "kind" in e.otherwise ? this.evalExpr(e.otherwise, env) : this.evalBlock(e.otherwise, env);
       }
       case "match": {
         const v = this.evalExpr(e.scrutinee, env);
-        for (const arm of e.arms) {
+        for (const [i, arm] of e.arms.entries()) {
           const scope = this.child(env);
-          if (this.bind(arm.pattern, v, scope)) return this.evalExpr(arm.body, scope);
+          if (this.bind(arm.pattern, v, scope)) {
+            this.took(e.span, `arm${i}`);
+            return this.evalExpr(arm.body, scope);
+          }
         }
         throw new RuntimeError(`no match arm for ${describe(v)}`, e.span);
       }
@@ -538,7 +625,11 @@ export class Runtime {
     const local = this.lookup(env, name);
     if (local) return local;
     const state = this.state.get(name);
-    if (state) return state;
+    if (state) {
+      if (state.t === "table") this.origins.set(state, name);
+      else this.reads.add(name);
+      return state;
+    }
     const item = this.items.get(name);
     if (item) {
       switch (item.kind) {
@@ -756,14 +847,18 @@ export class Runtime {
       }
       case "table": {
         const rows = recv.rows;
+        if (m === "get" || m === "contains") {
+          need(1);
+          this.noteRead(recv, keyOf(args[0]!));
+        } else if (m !== "insert" && m !== "remove") {
+          this.noteRead(recv, null);
+        }
         switch (m) {
           case "get": {
-            need(1);
             const row = rows.get(keyOf(args[0]!));
             return row ? some(row) : NONE;
           }
           case "contains":
-            need(1);
             return bool(rows.has(keyOf(args[0]!)));
           case "insert": {
             need(1);

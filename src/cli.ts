@@ -4,7 +4,7 @@
 //   nindub outline <file.nindub> [--depth N]   the overview: regions, roads, signatures
 //   nindub parse   <file.nindub>               print the AST as JSON
 //   nindub run     <file.nindub>               run the Map alone; read calls from stdin
-//   nindub survey  <file.nindub> --terrain <url> [--seed N] [--steps N] [--script file]
+//   nindub survey  <file.nindub> --terrain <url> [--seed N] [--steps N] [--script file] [--plan]
 //                                              compare the Map with a Terrain (docs/SURVEY.md)
 //   nindub serve   <file.nindub> [--port N]    serve the Map itself as a Terrain (for trying survey)
 
@@ -26,7 +26,7 @@ function usage(): never {
       "  nindub outline <file.nindub> [--depth N]",
       "  nindub parse   <file.nindub>",
       "  nindub run     <file.nindub>",
-      "  nindub survey  <file.nindub> --terrain <url> [--seed N] [--steps N] [--script file]",
+      "  nindub survey  <file.nindub> --terrain <url> [--seed N] [--steps N] [--script file] [--plan]",
       "  nindub serve   <file.nindub> [--port N]",
       "",
     ].join("\n"),
@@ -131,14 +131,23 @@ async function run(file: string) {
   }
 }
 
-// Pull `--name value` options out of argv; the rest are positionals.
+// Pull `--name value` options and `--flag` switches out of argv; the rest
+// are positionals.
+const FLAGS = new Set(["plan"]);
 const argv = process.argv.slice(2);
 const opts = new Map<string, string>();
+const flags = new Set<string>();
 for (let i = 0; i < argv.length; ) {
   if (argv[i]!.startsWith("--")) {
+    const name = argv[i]!.slice(2);
+    if (FLAGS.has(name)) {
+      flags.add(name);
+      argv.splice(i, 1);
+      continue;
+    }
     const v = argv[i + 1];
     if (v === undefined) usage();
-    opts.set(argv[i]!.slice(2), v);
+    opts.set(name, v);
     argv.splice(i, 2);
   } else {
     i++;
@@ -174,6 +183,7 @@ switch (command) {
       ...(intOpt("seed", 0) !== undefined ? { seed: intOpt("seed", 0)! } : {}),
       ...(intOpt("steps", 1) !== undefined ? { steps: intOpt("steps", 1)! } : {}),
       ...(scriptFile ? { script: readFileSync(scriptFile, "utf8") } : {}),
+      ...(flags.has("plan") ? { plan: true } : {}),
     });
     process.stdout.write(formatReport(report, map.name, target));
     process.exit(report.drift || report.error ? 1 : 0);

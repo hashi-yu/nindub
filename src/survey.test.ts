@@ -149,3 +149,36 @@ test("Random is deterministic and same() ignores key order", () => {
   assert.ok(!same({ x: 1 }, { x: 1, y: 2 }));
   assert.ok(!same([1, 2], [2, 1]));
 });
+
+// The Drift that random generation reached in 2 of 30 runs of 600 steps
+// (examples/shop-terrain/README.md): a sku added again to a cart with two
+// lines. Before Amendment 2 the Map moved the merged line to the end; the
+// Terrain kept it in place. Here the Map is put back to the old behavior
+// and surveyed against the current one.
+test("planning reads what was just written and builds on it, so the cart-line Drift is found and blamed", async () => {
+  const shopSrc = readFileSync(new URL("../examples/shop.nindub", import.meta.url), "utf8");
+  const old = shopSrc.replace(
+    /let merged = Line \{ sku, qty: qty_now, unit_price: s\.price \};\n\s*let lines = match current \{\n\s*Some\(_\) => existing\.lines\.map\(\|l\| if l\.sku == sku \{ merged \} else \{ l \}\),\n\s*None => existing\.lines\.push\(merged\),\n\s*\};\n\s*carts\.insert\(CartRow \{ id: user, lines \}\);/,
+    "let others = existing.lines.filter(|l| l.sku != sku);\n        carts.insert(CartRow { id: user, lines: others.push(Line { sku, qty: qty_now, unit_price: s.price }) });",
+  );
+  assert.notEqual(old, shopSrc, "the mutation applied");
+  const r = await survey(parse(old), terrainOf(shopSrc), { seed: 4, steps: 400, plan: true });
+  assert.ok(r.drift, "expected drift");
+  assert.equal(r.drift.channel, "result");
+  assert.match(r.drift.call, /^cart\(/);
+  assert.equal(r.steps[r.steps.length - 1]!.probe, true, "the read was planned");
+  assert.equal(r.drift.blame.length, 1);
+  assert.match(r.drift.blame[0]!.cell, /^carts\[/);
+  assert.equal(r.drift.blame[0]!.step, r.drift.step - 1, "the write just before it is blamed");
+  assert.match(r.steps[r.drift.step - 2]!.call, /^add_to_cart\(/);
+});
+
+test("planning finds no Drift where there is none, and stays deterministic", async () => {
+  const shopSrc = readFileSync(new URL("../examples/shop.nindub", import.meta.url), "utf8");
+  const a = await survey(parse(shopSrc), terrainOf(shopSrc), { seed: 5, steps: 200, plan: true });
+  assert.equal(a.drift, null, JSON.stringify(a.drift));
+  assert.equal(a.error, null, JSON.stringify(a.error));
+  assert.ok(a.steps.some((s) => s.probe), "some steps were planned reads");
+  const b = await survey(parse(shopSrc), terrainOf(shopSrc), { seed: 5, steps: 200, plan: true });
+  assert.deepEqual(a.steps.map((s) => s.call), b.steps.map((s) => s.call));
+});
