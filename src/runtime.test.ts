@@ -196,6 +196,27 @@ test("queries cannot call actions", () => {
   assert.throws(() => rt.call("sneaky", [id("a")]), RuntimeError);
 });
 
+test("fns are pure helpers: callable from bodies, not from outside, and may not change the world", () => {
+  const src = (body: string) => `
+      map M;
+      struct Row { id: Id<Row>, n: Int }
+      enum Error { Nope }
+      effect Ping { id: Id<Row> }
+      state rows: Table<Row>;
+      fn double(n: Int) -> Int { n * 2 }
+      fn bad(id: Id<Row>) -> Int { ${body} }
+      query q(n: Int) -> Int { double(n) }
+      action a(id: Id<Row>) -> Result<Int, Error> { Ok(bad(id)) }
+    `;
+  const rt = new Runtime(parse(src("1")));
+  assert.deepEqual(json(rt.call("q", [{ t: "int", v: 4n }]).result), 8);
+  assert.throws(() => rt.call("double", [{ t: "int", v: 4n }]), /no action, query or view named double/);
+  for (const body of ["rows.insert(Row { id, n: 1 }); 1", "emit Ping { id }; 1"]) {
+    const r = new Runtime(parse(src(body)));
+    assert.throws(() => r.call("a", [id("x")]), /a fn cannot/);
+  }
+});
+
 test("locals are snapshots of state", () => {
   const rt = new Runtime(
     parse(`

@@ -1,0 +1,466 @@
+//! Shop — a Nindub Map for a small order-management system.
+//!
+//! Roadmap item 5: something that is not a Todo app. A catalog with
+//! stock, per-customer carts, orders with a status machine, payment
+//! through an external provider, shipping and receipts as effects, staff
+//! permissions, and separate customer and staff screens.
+
+map Shop;
+
+// ─── Territory ───────────────────────────────────────────────────────
+
+/// Customers and staff use the same web app; what they can do differs.
+region web: Client {
+    road http -> api;
+
+    view Browse(user: UserId);
+    view Product(user: UserId, sku: SkuId);
+    view Cart(user: UserId);
+    view Orders(user: UserId);
+    view OrderDetail(user: UserId, id: OrderId);
+    view Admin(staff_user: UserId);
+}
+
+region api: Service(ts) {
+    road sql      -> db;
+    road http     -> payments;
+    road ship     -> shipping;
+    road mail     -> mailer;
+
+    region catalog {
+        query  products()                                      -> Vec<Sku>;
+        query  product(sku: SkuId)                             -> Option<Sku>;
+    }
+
+    region cart {
+        action add_to_cart(user: UserId, sku: SkuId, qty: Int) -> Result<(), Error>;
+        action remove_from_cart(user: UserId, sku: SkuId)      -> Result<(), Error>;
+        query  cart(user: UserId)                              -> Vec<Line>;
+        query  cart_total(user: UserId)                        -> Int;
+    }
+
+    region orders {
+        action place(user: UserId)                             -> Result<OrderId, Error>;
+        action cancel(user: UserId, id: OrderId)               -> Result<(), Error>;
+        query  order(user: UserId, id: OrderId)                -> Result<Order, Error>;
+        query  history(user: UserId)                           -> Vec<Order>;
+    }
+
+    region staff {
+        action grant(granter: UserId, user: UserId)            -> Result<(), Error>;
+        action add_sku(staff_user: UserId, name: Text, price: Int, stock: Int) -> Result<SkuId, Error>;
+        action restock(staff_user: UserId, sku: SkuId, qty: Int) -> Result<(), Error>;
+        action ship(staff_user: UserId, id: OrderId)           -> Result<(), Error>;
+        query  all_orders(staff_user: UserId)                  -> Result<Vec<Order>, Error>;
+    }
+}
+
+region db: Postgres {
+    state skus:   Table<Sku>;
+    state carts:  Table<CartRow>;
+    state orders: Table<Order>;
+    state staff:  Table<Staff>;
+
+    invariant "stock is never negative";
+    invariant "cart lines have positive quantities and refer to existing skus";
+    invariant "an order's total is the sum of its lines";
+    invariant "a shipped order was paid";
+}
+
+/// The payment provider. Charges and refunds are requests; the provider
+/// may decline or be unavailable.
+region payments: External {
+    port Payments {
+        fn charge(customer: UserId, amount: Int) -> Result<ChargeId, PayError>;
+        fn refund(charge: ChargeId)              -> Result<(), PayError>;
+    }
+}
+
+region shipping: Outbound {
+    effect Ship { order: OrderId, customer: UserId }
+}
+
+region mailer: Outbound {
+    effect Receipt  { to: UserId, order: OrderId, total: Int }
+    effect Refunded { to: UserId, order: OrderId, total: Int }
+}
+
+// ─── Legend ──────────────────────────────────────────────────────────
+
+type UserId   = Id<User>;
+type SkuId    = Id<Sku>;
+type OrderId  = Id<Order>;
+type ChargeId = Id<Charge>;
+
+opaque User;
+opaque Charge;
+
+struct Sku {
+    id: SkuId,
+    name: Text,
+    price: Int,   // in the smallest currency unit
+    stock: Int,
+}
+
+struct Line {
+    sku: SkuId,
+    qty: Int,
+    unit_price: Int, // price at the time the line was added
+}
+
+/// A customer's cart. Keyed by the customer's id.
+struct CartRow {
+    id: UserId,
+    lines: Vec<Line>,
+}
+
+enum Status {
+    Placed,
+    Paid(ChargeId),
+    Shipped(ChargeId),
+    Cancelled,
+    Refunded,
+}
+
+struct Order {
+    id: OrderId,
+    customer: UserId,
+    lines: Vec<Line>,
+    total: Int,
+    status: Status,
+    placed_at: Instant,
+}
+
+/// Who may run the staff actions. Empty at first; the first grant
+/// bootstraps.
+struct Staff {
+    id: UserId,
+}
+
+enum Error {
+    NotFound,
+    Forbidden,
+    InvalidQuantity,
+    InvalidPrice,
+    OutOfStock,
+    EmptyCart,
+    PaymentDeclined,
+    RefundFailed,
+    NotCancellable,
+    NotShippable,
+}
+
+enum PayError {
+    Declined,
+    Unavailable,
+}
+
+inject clock: Clock;
+inject ids: IdSource;
+
+// ─── Detail ──────────────────────────────────────────────────────────
+
+impl db {
+    invariant "stock is never negative" {
+        skus.all(|s| s.stock >= 0)
+    }
+
+    invariant "cart lines have positive quantities and refer to existing skus" {
+        carts.all(|c| c.lines.all(|l| l.qty > 0 && skus.contains(l.sku)))
+    }
+
+    invariant "an order's total is the sum of its lines" {
+        orders.all(|o| o.total == o.lines.map(|l| l.qty * l.unit_price).sum())
+    }
+
+    invariant "a shipped order was paid" {
+        orders.all(|o| match o.status {
+            Status::Shipped(_) => o.lines.len() > 0,
+            _ => true,
+        })
+    }
+}
+
+impl api::catalog {
+    query products() -> Vec<Sku> {
+        skus.sorted_by(|s| s.name)
+    }
+
+    query product(sku: SkuId) -> Option<Sku> {
+        skus.get(sku)
+    }
+}
+
+impl api::cart {
+    action add_to_cart(user: UserId, sku: SkuId, qty: Int) -> Result<(), Error> {
+        requires qty > 0 else Error::InvalidQuantity;
+        let s = skus.get(sku) else Error::NotFound;
+
+        let existing = carts.get(user).unwrap_or(CartRow { id: user, lines: [] });
+        // Adding a sku already in the cart increases its quantity, at the
+        // current price, and keeps the line where it was (Amendment 2).
+        let current = existing.lines.find(|l| l.sku == sku);
+        let qty_now = match current {
+            Some(l) => l.qty + qty,
+            None => qty,
+        };
+        requires qty_now <= s.stock else Error::OutOfStock;
+
+        let merged = Line { sku, qty: qty_now, unit_price: s.price };
+        let lines = match current {
+            Some(_) => existing.lines.map(|l| if l.sku == sku { merged } else { l }),
+            None => existing.lines.push(merged),
+        };
+        carts.insert(CartRow { id: user, lines });
+        Ok(())
+    }
+
+    action remove_from_cart(user: UserId, sku: SkuId) -> Result<(), Error> {
+        let existing = carts.get(user) else Error::NotFound;
+        requires existing.lines.any(|l| l.sku == sku) else Error::NotFound;
+        carts.insert(CartRow { id: user, lines: existing.lines.filter(|l| l.sku != sku) });
+        Ok(())
+    }
+
+    query cart(user: UserId) -> Vec<Line> {
+        carts.get(user).unwrap_or(CartRow { id: user, lines: [] }).lines
+    }
+
+    query cart_total(user: UserId) -> Int {
+        cart(user).map(|l| l.qty * l.unit_price).sum()
+    }
+}
+
+impl api::orders {
+    action place(user: UserId) -> Result<OrderId, Error> {
+        let row = carts.get(user) else Error::EmptyCart;
+        requires row.lines.len() > 0 else Error::EmptyCart;
+        requires row.lines.all(|l| match skus.get(l.sku) {
+            Some(s) => s.stock >= l.qty,
+            None => false,
+        }) else Error::OutOfStock;
+
+        let total = row.lines.map(|l| l.qty * l.unit_price).sum();
+        let id = ids.fresh();
+
+        // Take the stock, then charge. If the charge fails the whole action
+        // fails and the stock comes back: actions are atomic.
+        for l in row.lines {
+            skus[l.sku].stock = skus[l.sku].stock - l.qty;
+        }
+        let charge = Payments.charge(user, total) else Error::PaymentDeclined;
+
+        orders.insert(Order {
+            id,
+            customer: user,
+            lines: row.lines,
+            total,
+            status: Status::Paid(charge),
+            placed_at: clock.now(),
+        });
+        carts.remove(user);
+        emit Receipt { to: user, order: id, total };
+        Ok(id)
+    }
+
+    action cancel(user: UserId, id: OrderId) -> Result<(), Error> {
+        let o = orders.get(id) else Error::NotFound;
+        requires o.customer == user else Error::Forbidden;
+        match o.status {
+            Status::Placed => {
+                orders[id].status = Status::Cancelled;
+            }
+            Status::Paid(charge) => {
+                let _ = Payments.refund(charge) else Error::RefundFailed;
+                orders[id].status = Status::Refunded;
+                emit Refunded { to: user, order: id, total: o.total };
+            }
+            _ => {
+                requires false else Error::NotCancellable;
+            }
+        }
+        for l in o.lines {
+            skus[l.sku].stock = skus[l.sku].stock + l.qty;
+        }
+        Ok(())
+    }
+
+    query order(user: UserId, id: OrderId) -> Result<Order, Error> {
+        let o = orders.get(id) else Error::NotFound;
+        requires o.customer == user else Error::Forbidden;
+        Ok(o)
+    }
+
+    query history(user: UserId) -> Vec<Order> {
+        orders.filter(|o| o.customer == user).sorted_by(|o| o.placed_at)
+    }
+}
+
+impl api::staff {
+    action grant(granter: UserId, user: UserId) -> Result<(), Error> {
+        requires staff.is_empty() || staff.contains(granter) else Error::Forbidden;
+        staff.insert(Staff { id: user });
+        Ok(())
+    }
+
+    action add_sku(staff_user: UserId, name: Text, price: Int, stock: Int) -> Result<SkuId, Error> {
+        requires staff.contains(staff_user) else Error::Forbidden;
+        requires price >= 0 else Error::InvalidPrice;
+        requires stock >= 0 else Error::InvalidQuantity;
+        let id = ids.fresh();
+        skus.insert(Sku { id, name, price, stock });
+        Ok(id)
+    }
+
+    action restock(staff_user: UserId, sku: SkuId, qty: Int) -> Result<(), Error> {
+        requires staff.contains(staff_user) else Error::Forbidden;
+        requires qty > 0 else Error::InvalidQuantity;
+        requires skus.contains(sku) else Error::NotFound;
+        skus[sku].stock = skus[sku].stock + qty;
+        Ok(())
+    }
+
+    action ship(staff_user: UserId, id: OrderId) -> Result<(), Error> {
+        requires staff.contains(staff_user) else Error::Forbidden;
+        let o = orders.get(id) else Error::NotFound;
+        let charge = match o.status {
+            Status::Paid(c) => Some(c),
+            _ => None,
+        } else Error::NotShippable;
+        orders[id].status = Status::Shipped(charge);
+        emit Ship { order: id, customer: o.customer };
+        Ok(())
+    }
+
+    query all_orders(staff_user: UserId) -> Result<Vec<Order>, Error> {
+        requires staff.contains(staff_user) else Error::Forbidden;
+        Ok(orders.sorted_by(|o| o.placed_at))
+    }
+}
+
+impl web {
+    view Browse(user: UserId) {
+        heading("Shop");
+        for s in products() {
+            item(s.name, price: s.price, stock: s.stock) {
+                form("Add to cart", |qty: Int| add_to_cart(user, s.id, qty));
+                link("Details", Product(user, s.id));
+            }
+        }
+        link("Cart", Cart(user));
+        link("Orders", Orders(user));
+    }
+
+    view Product(user: UserId, sku: SkuId) {
+        match product(sku) {
+            Some(s) => {
+                heading(s.name);
+                text("Price " + s.price);
+                text(if s.stock > 0 { "In stock: " + s.stock } else { "Sold out" });
+                if s.stock > 0 {
+                    form("Add to cart", |qty: Int| add_to_cart(user, s.id, qty));
+                }
+                link("Back", Browse(user));
+            }
+            None => {
+                heading("No such product");
+                link("Back", Browse(user));
+            }
+        }
+    }
+
+    view Cart(user: UserId) {
+        heading("Your cart");
+        let lines = cart(user);
+        for l in lines {
+            item("Item", sku: l.sku, qty: l.qty, unit_price: l.unit_price) {
+                button("Remove", remove_from_cart(user, l.sku));
+            }
+        }
+        text("Total " + cart_total(user));
+        if lines.len() > 0 {
+            button("Place order", place(user)).then(Orders(user));
+        }
+        link("Continue shopping", Browse(user));
+    }
+
+    view Orders(user: UserId) {
+        heading("Your orders");
+        for o in history(user) {
+            item("Order " + o.id, total: o.total, status: status_text(o.status)) {
+                if cancellable(o.status) {
+                    button("Cancel", cancel(user, o.id));
+                }
+                link("Open", OrderDetail(user, o.id));
+            }
+        }
+        link("Shop", Browse(user));
+    }
+
+    view OrderDetail(user: UserId, id: OrderId) {
+        match order(user, id) {
+            Ok(o) => {
+                heading("Order " + o.id);
+                text("Status " + status_text(o.status));
+                for l in o.lines {
+                    item("Line", sku: l.sku, qty: l.qty, unit_price: l.unit_price) {}
+                }
+                text("Total " + o.total);
+                if cancellable(o.status) {
+                    button("Cancel", cancel(user, o.id)).then(Orders(user));
+                }
+                link("Back", Orders(user));
+            }
+            Err(_) => {
+                heading("Not found");
+                link("Back", Orders(user));
+            }
+        }
+    }
+
+    view Admin(staff_user: UserId) {
+        match all_orders(staff_user) {
+            Ok(list) => {
+                heading("All orders");
+                for o in list {
+                    item("Order " + o.id, customer: o.customer, total: o.total, status: status_text(o.status)) {
+                        if shippable(o.status) {
+                            button("Ship", ship(staff_user, o.id));
+                        }
+                    }
+                }
+                form("Add product", |name: Text, price: Int, stock: Int| add_sku(staff_user, name, price, stock));
+            }
+            Err(_) => {
+                heading("Staff only");
+                link("Shop", Browse(staff_user));
+            }
+        }
+    }
+
+    // Pure helpers for the screens; a view may call queries and fns, never actions.
+    fn status_text(s: Status) -> Text {
+        match s {
+            Status::Placed => "placed",
+            Status::Paid(_) => "paid",
+            Status::Shipped(_) => "shipped",
+            Status::Cancelled => "cancelled",
+            Status::Refunded => "refunded",
+        }
+    }
+
+    fn cancellable(s: Status) -> bool {
+        match s {
+            Status::Placed => true,
+            Status::Paid(_) => true,
+            _ => false,
+        }
+    }
+
+    fn shippable(s: Status) -> bool {
+        match s {
+            Status::Paid(_) => true,
+            _ => false,
+        }
+    }
+}

@@ -1,18 +1,36 @@
 #!/usr/bin/env node
 // nindub command line.
 //
-//   nindub parse <file.nindub>   print the AST as JSON
-//   nindub run   <file.nindub>   run the Map alone; read calls from stdin
+//   nindub outline <file.nindub> [--depth N]   the overview: regions, roads, signatures
+//   nindub parse   <file.nindub>               print the AST as JSON
+//   nindub run     <file.nindub>               run the Map alone; read calls from stdin
+//   nindub survey  <file.nindub> --terrain <url> [--seed N] [--steps N] [--script file]
+//                                              compare the Map with a Terrain (docs/SURVEY.md)
+//   nindub serve   <file.nindub> [--port N]    serve the Map itself as a Terrain (for trying survey)
 
 import { readFileSync } from "node:fs";
 import { createInterface } from "node:readline";
 import { LexError } from "./lexer.ts";
+import { outline } from "./outline.ts";
 import { parse, parseExpr, ParseError } from "./parser.ts";
+import { resolve, ResolveError } from "./resolve.ts";
 import { Runtime, RuntimeError } from "./runtime.ts";
+import { formatReport, survey } from "./survey.ts";
+import { HttpTerrain, RuntimeTerrain, serve } from "./terrain.ts";
 import { toJSON, type Value } from "./values.ts";
 
 function usage(): never {
-  process.stderr.write("usage: nindub (parse | run) <file.nindub>\n");
+  process.stderr.write(
+    [
+      "usage:",
+      "  nindub outline <file.nindub> [--depth N]",
+      "  nindub parse   <file.nindub>",
+      "  nindub run     <file.nindub>",
+      "  nindub survey  <file.nindub> --terrain <url> [--seed N] [--steps N] [--script file]",
+      "  nindub serve   <file.nindub> [--port N]",
+      "",
+    ].join("\n"),
+  );
   process.exit(2);
 }
 
@@ -21,9 +39,11 @@ const show = (v: unknown) => JSON.stringify(v, jsonReplacer, 2);
 
 function loadMap(file: string) {
   try {
-    return parse(readFileSync(file, "utf8"));
+    const map = parse(readFileSync(file, "utf8"));
+    resolve(map); // structural checks; the result is rebuilt by Runtime
+    return map;
   } catch (e) {
-    if (e instanceof ParseError || e instanceof LexError) {
+    if (e instanceof ParseError || e instanceof LexError || e instanceof ResolveError) {
       process.stderr.write(`${file}:${e.message}\n`);
       process.exit(1);
     }
@@ -69,7 +89,7 @@ async function run(file: string) {
         out(HELP);
       } else if (line === ":state") {
         const state: Record<string, unknown> = {};
-        for (const item of map.items) if (item.kind === "state") state[item.name] = toJSON(rt.getState(item.name));
+        for (const name of rt.states()) state[name] = toJSON(rt.getState(name));
         out(show(state));
       } else if (line === ":calls") {
         for (const c of rt.callables()) {
@@ -101,7 +121,7 @@ async function run(file: string) {
         }
       }
     } catch (e) {
-      if (e instanceof RuntimeError || e instanceof ParseError || e instanceof LexError) {
+      if (e instanceof RuntimeError || e instanceof ParseError || e instanceof LexError || e instanceof TypeError) {
         out(`error: ${e.message}`);
       } else {
         throw e;
@@ -111,15 +131,59 @@ async function run(file: string) {
   }
 }
 
-const [command, file] = process.argv.slice(2);
+// Pull `--name value` options out of argv; the rest are positionals.
+const argv = process.argv.slice(2);
+const opts = new Map<string, string>();
+for (let i = 0; i < argv.length; ) {
+  if (argv[i]!.startsWith("--")) {
+    const v = argv[i + 1];
+    if (v === undefined) usage();
+    opts.set(argv[i]!.slice(2), v);
+    argv.splice(i, 2);
+  } else {
+    i++;
+  }
+}
+const intOpt = (name: string, min: number): number | undefined => {
+  const raw = opts.get(name);
+  if (raw === undefined) return undefined;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < min) usage();
+  return n;
+};
+const [command, file] = argv;
 if (!file) usage();
 switch (command) {
+  case "outline": {
+    const depth = intOpt("depth", 1);
+    process.stdout.write(outline(loadMap(file), depth === undefined ? {} : { depth }));
+    break;
+  }
   case "parse":
     process.stdout.write(show(loadMap(file)) + "\n");
     break;
   case "run":
     await run(file);
     break;
+  case "survey": {
+    const target = opts.get("terrain");
+    if (!target) usage();
+    const map = loadMap(file);
+    const scriptFile = opts.get("script");
+    const report = await survey(map, new HttpTerrain(target), {
+      ...(intOpt("seed", 0) !== undefined ? { seed: intOpt("seed", 0)! } : {}),
+      ...(intOpt("steps", 1) !== undefined ? { steps: intOpt("steps", 1)! } : {}),
+      ...(scriptFile ? { script: readFileSync(scriptFile, "utf8") } : {}),
+    });
+    process.stdout.write(formatReport(report, map.name, target));
+    process.exit(report.drift || report.error ? 1 : 0);
+  }
+  case "serve": {
+    const map = loadMap(file);
+    const server = await serve(new RuntimeTerrain(resolve(map), map), intOpt("port", 0) ?? 0);
+    process.stderr.write(`serving Map ${map.name} as a Terrain at ${server.url}/__nindub/call\n`);
+    break;
+  }
   default:
     usage();
 }

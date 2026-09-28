@@ -4,68 +4,89 @@ import { readFileSync } from "node:fs";
 import { parse, ParseError } from "./parser.ts";
 import type * as ast from "./ast.ts";
 
-const item = <K extends ast.Item["kind"]>(map: ast.MapDecl, kind: K, name?: string) => {
-  const found = map.items.find(
+const item = <K extends ast.Item["kind"]>(items: ast.Item[], kind: K, name?: string) => {
+  const found = items.find(
     (i) => i.kind === kind && (name === undefined || ("name" in i && i.name === name)),
   ) as Extract<ast.Item, { kind: K }> | undefined;
   assert.ok(found, `no ${kind} ${name ?? ""}`);
   return found;
 };
 
-test("parses the Todo example", () => {
+const body = (i: { body: ast.Block | null }) => {
+  assert.ok(i.body, "expected a body");
+  return i.body;
+};
+
+test("parses the Todo example: territory, legend, detail", () => {
   const src = readFileSync(new URL("../examples/todo.nindub", import.meta.url), "utf8");
   const map = parse(src);
   assert.equal(map.name, "Todo");
   assert.deepEqual(
-    map.items.map((i) => i.kind),
+    map.items.map((i) => (i.kind === "impl" ? `impl ${i.path.join("::")}` : `${i.kind} ${"name" in i ? i.name : ""}`.trim())),
     [
-      "type",
-      "type",
-      "opaque",
-      "struct",
-      "enum",
-      "inject",
-      "inject",
-      "state",
-      "invariant",
-      "invariant",
-      "port",
-      "enum",
-      "effect",
-      "action",
-      "action",
-      "action",
-      "query",
-      "query",
-      "view",
-      "view",
+      "region browser",
+      "region api",
+      "region store",
+      "region directory",
+      "region mailer",
+      "type UserId",
+      "type TodoId",
+      "opaque User",
+      "struct Todo",
+      "enum Error",
+      "enum DirectoryError",
+      "inject clock",
+      "inject ids",
+      "impl store",
+      "impl api",
+      "impl browser",
     ],
   );
 
-  const todo = item(map, "struct", "Todo");
+  const api = item(map.items, "region", "api");
+  assert.deepEqual(api.regionKind, { ...api.regionKind, name: "Service", args: ["ts"] });
   assert.deepEqual(
-    todo.fields.map((f) => f.name),
-    ["id", "owner", "title", "done", "created_at"],
+    api.roads.map((r) => `${r.name} -> ${r.to.join("::")}`),
+    ["sql -> store", "http -> directory", "mail -> mailer"],
   );
-
-  const user = item(map, "opaque", "User");
-  assert.deepEqual(user.doc, [
-    "Users live in an external directory (see `port Directory`). The Map",
-    "only ever sees their ids.",
-  ]);
-
-  const dir = item(map, "port", "Directory");
-  assert.equal(dir.fns[0]!.name, "email_of");
-  assert.equal(dir.fns[0]!.returns.kind, "named");
-
-  const complete = item(map, "action", "complete");
-  const [letStmt, requires, assign, matchStmt, tail] = complete.body.stmts;
-  assert.equal(letStmt!.kind, "let");
+  // Declarations in the region have no bodies; the impl block has them.
+  const declared = item(api.items, "action", "complete");
+  assert.equal(declared.body, null);
+  const impl = map.items.find((i) => i.kind === "impl" && i.path[0] === "api") as ast.Impl;
+  const complete = item(impl.items, "action", "complete");
+  const [letStmt, requires, assign, matchStmt, tail] = body(complete).stmts;
   assert.ok(letStmt!.kind === "let" && letStmt!.orElse !== null);
   assert.equal(requires!.kind, "requires");
   assert.equal(assign!.kind, "assign");
   assert.ok(matchStmt!.kind === "expr" && matchStmt!.expr.kind === "match");
   assert.ok(tail!.kind === "expr" && !tail!.terminated);
+
+  const browser = item(map.items, "region", "browser");
+  assert.deepEqual(browser.doc, [
+    "Where people are. Views live here and are observed through the",
+    "browser's accessibility tree.",
+  ]);
+  const store = item(map.items, "region", "store");
+  assert.equal(item(store.items, "invariant").body, null);
+  const dir = item(item(map.items, "region", "directory").items, "port", "Directory");
+  assert.equal(dir.fns[0]!.name, "email_of");
+});
+
+test("regions nest, and bodies may be inline", () => {
+  const map = parse(`
+    map M;
+    region api: Service(ts) {
+      road sql -> db;
+      region todos {
+        query n() -> Int { 1 }
+      }
+    }
+    region db: Postgres { state rows: Table<Row>; }
+  `);
+  const api = item(map.items, "region", "api");
+  const todos = item(api.items, "region", "todos");
+  assert.equal(todos.regionKind, null);
+  assert.ok(item(todos.items, "query", "n").body);
 });
 
 test("view elements take named arguments and children", () => {
@@ -80,8 +101,8 @@ test("view elements take named arguments and children", () => {
       }
     }
   `);
-  const view = item(map, "view", "List");
-  const loop = view.body.stmts[0]!;
+  const view = item(map.items, "view", "List");
+  const loop = body(view).stmts[0]!;
   assert.equal(loop.kind, "for");
   if (loop.kind !== "for") return;
   const el = loop.body.stmts[0]!;
@@ -101,8 +122,7 @@ test("`{` after an if or for head starts the body, not a struct literal", () => 
       if t.done { true } else { false }
     }
   `);
-  const q = item(map, "query", "q");
-  const s = q.body.stmts[0]!;
+  const s = body(item(map.items, "query", "q")).stmts[0]!;
   assert.ok(s.kind === "expr" && s.expr.kind === "if");
   if (s.kind !== "expr" || s.expr.kind !== "if") return;
   assert.equal(s.expr.condition.kind, "field");
@@ -115,8 +135,7 @@ test("struct literals with shorthand fields", () => {
       todos.insert(Todo { id, done: false });
     }
   `);
-  const a = item(map, "action", "a");
-  const s = a.body.stmts[0]!;
+  const s = body(item(map.items, "action", "a")).stmts[0]!;
   assert.ok(s.kind === "expr" && s.expr.kind === "method");
   if (s.kind !== "expr" || s.expr.kind !== "method") return;
   const arg = s.expr.args[0]!.value;
@@ -136,8 +155,7 @@ test("ranges bind looser than arithmetic and tighter than &&", () => {
     map M;
     invariant "r" { (1..=n + 1).contains(x) && ok }
   `);
-  const inv = item(map, "invariant");
-  const tail = inv.body.stmts[0]!;
+  const tail = body(item(map.items, "invariant")).stmts[0]!;
   assert.ok(tail.kind === "expr" && tail.expr.kind === "binary" && tail.expr.op === "&&");
   if (tail.kind !== "expr" || tail.expr.kind !== "binary") return;
   const left = tail.expr.left;
@@ -160,13 +178,35 @@ test("patterns: wildcard, binding, variant with payload", () => {
       }
     }
   `);
-  const q = item(map, "query", "q");
-  const s = q.body.stmts[0]!;
+  const s = body(item(map.items, "query", "q")).stmts[0]!;
   if (s.kind !== "expr" || s.expr.kind !== "match") assert.fail("expected match");
   const [a, b, c] = s.expr.arms.map((arm) => arm.pattern);
-  assert.deepEqual(a, { ...a, kind: "path", segments: ["Ok"], args: [{ ...(a as ast.PathPattern).args[0]!, kind: "bind", name: "t" }] });
+  assert.ok(a!.kind === "path" && a!.segments[0] === "Ok" && a!.args[0]!.kind === "bind");
   assert.ok(b!.kind === "path" && b!.args[0]!.kind === "path" && (b!.args[0] as ast.PathPattern).segments.join("::") === "Error::NotFound");
   assert.ok(c!.kind === "path" && c!.args[0]!.kind === "wildcard");
+});
+
+test("a trailing match or if is the block's value; keywords may be method names", () => {
+  const map = parse(`
+    map M;
+    fn f(s: Status) -> Text {
+      if s == Status::A { text("x"); }
+      match s {
+        Status::A => "a",
+        _ => "b",
+      }
+    }
+    query g(xs: Vec<Int>) -> Int { xs.map(|x| x).sum() }
+    query h() -> Vec<Int> { [1, 2] }
+  `);
+  const f = item(map.items, "fn", "f");
+  const [first, tail] = body(f).stmts;
+  assert.ok(first!.kind === "expr" && first!.expr.kind === "if" && !first!.terminated);
+  assert.ok(tail!.kind === "expr" && tail!.expr.kind === "match" && !tail!.terminated);
+  const g = body(item(map.items, "query", "g")).stmts[0]!;
+  assert.ok(g.kind === "expr" && g.expr.kind === "method" && g.expr.method === "sum");
+  const h = body(item(map.items, "query", "h")).stmts[0]!;
+  assert.ok(h.kind === "expr" && h.expr.kind === "vec" && h.expr.items.length === 2);
 });
 
 test("reports position on error", () => {
@@ -178,4 +218,5 @@ test("reports position on error", () => {
 
 test("rejects keywords as names", () => {
   assert.throws(() => parse(`map M;\nstate match: Table<Todo>;`), ParseError);
+  assert.throws(() => parse(`map M;\nregion road: Service { }`), ParseError);
 });

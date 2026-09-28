@@ -24,11 +24,15 @@ const ITEM_KEYWORDS = new Set([
   "action",
   "query",
   "view",
+  "fn",
+  "region",
+  "impl",
 ]);
 
 const RESERVED = new Set([
   ...ITEM_KEYWORDS,
   "map",
+  "road",
   "fn",
   "let",
   "else",
@@ -58,6 +62,10 @@ const BINARY_PRECEDENCE: Record<string, number> = {
   "/": 5,
 };
 const RANGE_PRECEDENCE = 2.5; // between `&&` and comparisons, like Rust
+
+function isBlockLike(e: ast.Expr): boolean {
+  return e.kind === "if" || e.kind === "match" || e.kind === "block";
+}
 
 export function parse(source: string): ast.MapDecl {
   return new Parser(lex(source)).parseMap();
@@ -124,6 +132,13 @@ class Parser {
     return this.next().text;
   }
 
+  // After `.`, keywords are fine as names: `xs.map(...)`.
+  private expectMemberName(): string {
+    const t = this.peek();
+    if (t.kind !== "ident") this.fail("expected field or method name");
+    return this.next().text;
+  }
+
   expectEnd(): void {
     if (this.peek().kind !== "eof") this.fail("expected end of input");
   }
@@ -163,8 +178,7 @@ class Parser {
     return doc;
   }
 
-  private parseItem(): ast.Item {
-    const doc = this.parseDoc();
+  private parseItem(doc: string[] = this.parseDoc()): ast.Item {
     const start = this.start();
     const t = this.peek();
     if (t.kind !== "ident" || !ITEM_KEYWORDS.has(t.text)) {
@@ -207,8 +221,54 @@ class Parser {
         const d = this.peek();
         if (d.kind !== "string") this.fail("expected invariant description string");
         this.next();
-        const body = this.parseBlock();
+        const body = this.parseOptionalBody();
         return { kind: "invariant", description: d.text, body, ...base(this.spanFrom(start)) };
+      }
+      case "region": {
+        const name = this.expectIdent("region name");
+        let regionKind: ast.RegionKind | null = null;
+        if (this.eat(":")) {
+          const kstart = this.start();
+          const kname = this.expectIdent("region kind");
+          const args: string[] = [];
+          if (this.eat("(")) {
+            while (!this.at(")")) {
+              args.push(this.expectIdent("region kind argument"));
+              if (!this.eat(",")) break;
+            }
+            this.expect(")");
+          }
+          regionKind = { name: kname, args, span: this.spanFrom(kstart) };
+        }
+        this.expect("{");
+        const roads: ast.Road[] = [];
+        const items: ast.Item[] = [];
+        while (!this.at("}")) {
+          const innerDoc = this.parseDoc();
+          if (this.atKeyword("road")) {
+            const rstart = this.start();
+            this.next();
+            const rname = this.expectIdent("road name");
+            this.expect("->");
+            const to = [this.expectIdent("region")];
+            while (this.eat("::")) to.push(this.expectIdent("region"));
+            this.expect(";");
+            roads.push({ name: rname, to, span: this.spanFrom(rstart) });
+          } else {
+            items.push(this.parseItem(innerDoc));
+          }
+        }
+        this.expect("}");
+        return { kind: "region", name, regionKind, roads, items, ...base(this.spanFrom(start)) };
+      }
+      case "impl": {
+        const path = [this.expectIdent("region")];
+        while (this.eat("::")) path.push(this.expectIdent("region"));
+        this.expect("{");
+        const items: ast.Item[] = [];
+        while (!this.at("}")) items.push(this.parseItem());
+        this.expect("}");
+        return { kind: "impl", path, items, ...base(this.spanFrom(start)) };
       }
       case "port": {
         const name = this.expectIdent("port name");
@@ -233,23 +293,31 @@ class Parser {
         return { kind: "effect", name, fields, ...base(this.spanFrom(start)) };
       }
       case "action":
-      case "query": {
+      case "query":
+      case "fn": {
         const name = this.expectIdent(`${t.text} name`);
         const params = this.parseParams();
         this.expect("->");
         const returns = this.parseType();
-        const body = this.parseBlock();
+        const body = this.parseOptionalBody();
         return { kind: t.text, name, params, returns, body, ...base(this.spanFrom(start)) };
       }
       case "view": {
         const name = this.expectIdent("view name");
         const params = this.parseParams();
-        const body = this.parseBlock();
+        const body = this.parseOptionalBody();
         return { kind: "view", name, params, body, ...base(this.spanFrom(start)) };
       }
       default:
         return this.fail("unreachable");
     }
+  }
+
+  // `{ body }` defines; `;` only declares (the body comes in an `impl`).
+  private parseOptionalBody(): ast.Block | null {
+    if (this.at("{")) return this.parseBlock();
+    this.expect(";");
+    return null;
   }
 
   private parseFields(): ast.Field[] {
@@ -332,7 +400,9 @@ class Parser {
     while (!this.at("}")) {
       stmts.push(this.parseStmt());
       const last = stmts[stmts.length - 1]!;
-      if (last.kind === "expr" && !last.terminated && !this.at("}")) {
+      // An expression needs a `;` unless it ends the block (its value is the
+      // block's value) or is block-like (`if`, `match`, `{}`), as in Rust.
+      if (last.kind === "expr" && !last.terminated && !this.at("}") && !isBlockLike(last.expr)) {
         this.fail("expected `;` or `}` after expression");
       }
     }
@@ -383,9 +453,10 @@ class Parser {
       children = this.parseBlock();
     }
 
-    // Block-like expressions (if / match / block) need no `;`, as in Rust.
-    const blockLike = expr.kind === "if" || expr.kind === "match" || expr.kind === "block";
-    const terminated = this.eat(";") || children !== null || blockLike;
+    // `terminated` means "not the block's tail value": a `;` or children.
+    // A block-like expression without `;` at the end of a block is the
+    // block's value (`fn f() -> Int { match x { ... } }`).
+    const terminated = this.eat(";") || children !== null;
     return { kind: "expr", expr, children, terminated, span: this.spanFrom(start) };
   }
 
@@ -454,7 +525,7 @@ class Parser {
     for (;;) {
       const start = expr.span.start;
       if (this.eat(".")) {
-        const name = this.expectIdent("field or method name");
+        const name = this.expectMemberName();
         if (this.at("(")) {
           const args = this.parseArgs();
           expr = { kind: "method", receiver: expr, method: name, args, span: this.spanFrom(start) };
@@ -529,6 +600,19 @@ class Parser {
       }
       if (t.text === "|") {
         return this.parseClosure();
+      }
+      if (t.text === "[") {
+        this.next();
+        const items: ast.Expr[] = [];
+        const saved = this.noStructLiteral;
+        this.noStructLiteral = false;
+        while (!this.at("]")) {
+          items.push(this.parseExpr());
+          if (!this.eat(",")) break;
+        }
+        this.noStructLiteral = saved;
+        this.expect("]");
+        return { kind: "vec", items, span: this.spanFrom(start) };
       }
       this.fail("expected expression");
     }

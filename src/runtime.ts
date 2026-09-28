@@ -7,6 +7,7 @@
 // Runtime (D8), so two Runtimes given the same inputs behave identically.
 
 import type * as ast from "./ast.ts";
+import { resolve, type ResolvedItem, type ResolvedMap } from "./resolve.ts";
 import {
   type Element,
   type Env,
@@ -58,12 +59,15 @@ export interface PortRequest {
 }
 
 export interface Observation {
-  kind: "action" | "query" | "view";
+  kind: "action" | "query" | "view" | "fn";
   name: string;
   args: Value[];
   result: Value;
   effects: Value[]; // struct values, one per `emit`
   ports: PortRequest[];
+  // The injected values this call consumed, in order. Survey hands the same
+  // values to the Terrain so that both sides see the same world (D8).
+  injected: { clock: bigint[]; ids: string[] };
 }
 
 export interface Injections {
@@ -93,7 +97,8 @@ interface Frame {
 
 export class Runtime {
   readonly map: ast.MapDecl;
-  private readonly items = new Map<string, ast.Item>();
+  readonly resolved: ResolvedMap;
+  private readonly items = new Map<string, ResolvedItem>();
   private readonly enums = new Map<string, ast.Enum>();
   private readonly structs = new Map<string, ast.Struct>();
   private readonly effects = new Map<string, ast.Effect>();
@@ -114,11 +119,9 @@ export class Runtime {
           throw new RuntimeError(`no response injected for ${port}.${fn}`);
         }),
     };
-    for (const item of map.items) {
-      if ("name" in item) {
-        if (this.items.has(item.name)) throw new RuntimeError(`duplicate item ${item.name}`, item.span);
-        this.items.set(item.name, item);
-      }
+    this.resolved = resolve(map);
+    for (const item of this.resolved.items) {
+      if ("name" in item) this.items.set(item.name, item);
       if (item.kind === "enum") this.enums.set(item.name, item);
       if (item.kind === "struct") this.structs.set(item.name, item);
       if (item.kind === "effect") this.effects.set(item.name, item);
@@ -145,7 +148,7 @@ export class Runtime {
   /** Names of actions, queries and views, for tooling. */
   callables(): { name: string; kind: "action" | "query" | "view"; params: ast.Param[] }[] {
     const out: { name: string; kind: "action" | "query" | "view"; params: ast.Param[] }[] = [];
-    for (const item of this.map.items) {
+    for (const item of this.resolved.items) {
       if (item.kind === "action" || item.kind === "query" || item.kind === "view") {
         out.push({ name: item.name, kind: item.kind, params: item.params });
       }
@@ -159,10 +162,23 @@ export class Runtime {
     if (!item || (item.kind !== "action" && item.kind !== "query" && item.kind !== "view")) {
       throw new RuntimeError(`no action, query or view named ${name}`);
     }
+    return this.enter(item, args);
+  }
+
+  private enter(item: ResolvedItem & { kind: "action" | "query" | "view" | "fn" }, args: Value[]): Observation {
+    const name = item.name;
     if (args.length !== item.params.length) {
       throw new RuntimeError(`${name} takes ${item.params.length} arguments, got ${args.length}`, item.span);
     }
-    const observation: Observation = { kind: item.kind, name, args, result: UNIT, effects: [], ports: [] };
+    const observation: Observation = {
+      kind: item.kind,
+      name,
+      args,
+      result: UNIT,
+      effects: [],
+      ports: [],
+      injected: { clock: [], ids: [] },
+    };
     const frame: Frame = { observation, sink: item.kind === "view" ? [] : null };
     this.frames.push(frame);
     const snapshot = new Map(this.state);
@@ -226,8 +242,13 @@ export class Runtime {
     for (const [k, v] of snapshot) this.state.set(k, v);
   }
 
+  /** Names of state cells, for tooling. */
+  states(): string[] {
+    return [...this.state.keys()];
+  }
+
   private checkInvariants() {
-    for (const item of this.map.items) {
+    for (const item of this.resolved.items) {
       if (item.kind !== "invariant") continue;
       const v = this.evalBody(item.body, this.rootEnv());
       if (!truthy(v)) throw new InvariantViolation(item.description, item.span);
@@ -345,9 +366,19 @@ export class Runtime {
     throw new RuntimeError(`cannot iterate over ${describe(v)}`, span);
   }
 
+  // Only actions change the world. Queries, views and fns may not assign
+  // to state, insert or remove rows, emit effects, or call ports.
+  private mustMutate(what: string, span: ast.Span): void {
+    const kind = this.frames[this.frames.length - 1]?.observation.kind;
+    if (kind === "query" || kind === "view" || kind === "fn") {
+      throw new RuntimeError(`a ${kind} cannot ${what}`, span);
+    }
+  }
+
   // `todos[id].done = true` — rebuild the value along the place chain and
   // store it back into the state cell at the root.
   private assign(target: ast.Expr, value: Value, env: Env): void {
+    this.mustMutate("assign to state", target.span);
     const root = this.placeRoot(target);
     if (this.lookup(env, root.segments[0]!)) {
       throw new RuntimeError("only state can be assigned to; locals are immutable", target.span);
@@ -479,7 +510,10 @@ export class Runtime {
       }
       case "block":
         return this.evalBlock(e.block, env);
+      case "vec":
+        return vec(e.items.map((x) => this.evalExpr(x, env)));
       case "emit": {
+        this.mustMutate("emit", e.span);
         const effect = this.evalStructLit(e.effect, env);
         if (effect.t !== "struct" || !this.effects.has(effect.name)) {
           throw new RuntimeError(`emit needs an effect, got ${describe(effect)}`, e.span);
@@ -515,6 +549,7 @@ export class Runtime {
         case "action":
         case "query":
         case "view":
+        case "fn":
           return { t: "fn", name, kind: item.kind };
         default:
           throw new RuntimeError(`${item.kind} ${name} is not a value`, e.span);
@@ -593,21 +628,33 @@ export class Runtime {
       if (inView) return { t: "viewRef", name: callee.name, args: positional };
       if (!top) throw new RuntimeError("a view can only be referenced from another view", e.span);
     }
+    if (callee.kind === "fn") {
+      const item = this.items.get(callee.name);
+      if (!item || item.kind !== "fn") throw new RuntimeError(`no fn ${callee.name}`, e.span);
+      if (top) return this.enter(item, positional).result;
+      return this.invoke(callee.name, positional, e.span);
+    }
     if (top) return this.call(callee.name, positional).result;
     return this.invoke(callee.name, positional, e.span);
   }
 
-  // Call an action or query from within a body: its observation is folded
-  // into the current one.
+  // Call an action, query or fn from within a body: its observation is
+  // folded into the current one.
   private invoke(name: string, args: Value[], span: ast.Span): Value {
     const parent = this.frame().observation;
-    const obs = this.call(name, args);
+    const item = this.items.get(name);
+    if (!item || (item.kind !== "action" && item.kind !== "query" && item.kind !== "view" && item.kind !== "fn")) {
+      throw new RuntimeError(`no callable ${name}`, span);
+    }
+    const obs = this.enter(item, args);
     parent.effects.push(...obs.effects);
     parent.ports.push(...obs.ports);
+    parent.injected.clock.push(...obs.injected.clock);
+    parent.injected.ids.push(...obs.injected.ids);
     if (obs.kind === "action" && span) {
       // Actions called from other actions are allowed; from queries they
       // would mutate state through a read, so refuse.
-      if (parent.kind === "query" || parent.kind === "view") {
+      if (parent.kind === "query" || parent.kind === "view" || parent.kind === "fn") {
         throw new RuntimeError(`a ${parent.kind} cannot call action ${name}`, span);
       }
     }
@@ -684,15 +731,20 @@ export class Runtime {
       case "injected": {
         if (recv.type === "Clock" && m === "now") {
           need(0);
-          return { t: "instant", v: this.injections.clock() };
+          const v = this.injections.clock();
+          this.frame().observation.injected.clock.push(v);
+          return { t: "instant", v };
         }
         if (recv.type === "IdSource" && m === "fresh") {
           need(0);
-          return { t: "id", v: this.injections.ids() };
+          const v = this.injections.ids();
+          this.frame().observation.injected.ids.push(v);
+          return { t: "id", v };
         }
         break;
       }
       case "port": {
+        this.mustMutate(`call port ${recv.name}`, e.span);
         const decl = this.items.get(recv.name);
         if (!decl || decl.kind !== "port") throw new RuntimeError(`no port ${recv.name}`, e.span);
         const sig = decl.fns.find((f) => f.name === m);
@@ -780,6 +832,7 @@ export class Runtime {
 
   // `todos.insert(x)` mutates the state cell the receiver names.
   private replaceState(receiver: ast.Expr, value: Value, env: Env): Value {
+    this.mustMutate("modify state", receiver.span);
     if (receiver.kind !== "path" || receiver.segments.length !== 1 || !this.state.has(receiver.segments[0]!)) {
       throw new RuntimeError("only a state Table can be modified", receiver.span);
     }
@@ -830,6 +883,22 @@ export class Runtime {
         return bool(items.some((x) => equal(x, args[0]!)));
       case "first":
         return items[0] ? some(items[0]) : NONE;
+      case "find": {
+        const f = closureArg(0);
+        const hit = items.find((x) => truthy(f(x)));
+        return hit ? some(hit) : NONE;
+      }
+      case "push":
+        if (args.length !== 1) throw new RuntimeError("push takes 1 argument", span);
+        return vec([...items, args[0]!]);
+      case "sum": {
+        let total = 0n;
+        for (const x of items) {
+          if (x.t !== "int") throw new RuntimeError(`sum needs ints, got ${describe(x)}`, span);
+          total += x.v;
+        }
+        return int(total);
+      }
       default:
         throw new RuntimeError(`no method ${m} on a sequence`, span);
     }

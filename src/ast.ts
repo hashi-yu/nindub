@@ -30,7 +30,53 @@ export type Item =
   | Effect
   | Action
   | Query
-  | View;
+  | View
+  | Fn
+  | Region
+  | Impl;
+
+// `fn name(args) -> T { ... }` — a pure helper. Callable from bodies in
+// any region, never from outside, and observed by nothing: it may not
+// change state, emit, call ports or call actions.
+export interface Fn extends ItemBase {
+  kind: "fn";
+  name: string;
+  params: Param[];
+  returns: Type;
+  body: Block | null;
+}
+
+// `region api: Service(ts) { road sql -> store; ... }` — a bounded part of
+// the territory (D21). Items declared inside it live there. Its kind
+// decides which instrument Survey observes it with.
+export interface Region extends ItemBase {
+  kind: "region";
+  name: string;
+  regionKind: RegionKind | null;
+  roads: Road[];
+  items: Item[];
+}
+
+export interface RegionKind extends Node {
+  name: string;
+  args: string[];
+}
+
+// `road http -> api;` — a declared connection from the enclosing region to
+// another. Cross-region references in bodies must follow a road.
+export interface Road extends Node {
+  name: string;
+  to: string[]; // path to the target region
+}
+
+// `impl api { action create(...) -> ... { body } }` — bodies for items a
+// region declared with signatures only. Keeps the overview at the top of
+// the file and the detail below.
+export interface Impl extends ItemBase {
+  kind: "impl";
+  path: string[];
+  items: Item[];
+}
 
 export interface ItemBase extends Node {
   doc: string[]; // doc comment lines preceding the item
@@ -81,10 +127,12 @@ export interface State extends ItemBase {
   type: Type;
 }
 
+// A body is null when the item is declared with its signature only (in a
+// region overview) and defined in an `impl` block.
 export interface Invariant extends ItemBase {
   kind: "invariant";
   description: string;
-  body: Block;
+  body: Block | null;
 }
 
 export interface Port extends ItemBase {
@@ -110,7 +158,7 @@ export interface Action extends ItemBase {
   name: string;
   params: Param[];
   returns: Type;
-  body: Block;
+  body: Block | null;
 }
 
 export interface Query extends ItemBase {
@@ -118,14 +166,14 @@ export interface Query extends ItemBase {
   name: string;
   params: Param[];
   returns: Type;
-  body: Block;
+  body: Block | null;
 }
 
 export interface View extends ItemBase {
   kind: "view";
   name: string;
   params: Param[];
-  body: Block;
+  body: Block | null;
 }
 
 export interface Param extends Node {
@@ -197,6 +245,7 @@ export type Expr =
   | IntLit
   | StringLit
   | BoolLit
+  | VecLit
   | Path
   | StructLit
   | Call
@@ -215,6 +264,12 @@ export type Expr =
 // `()`
 export interface UnitLit extends Node {
   kind: "unit";
+}
+
+// `[a, b, c]`
+export interface VecLit extends Node {
+  kind: "vec";
+  items: Expr[];
 }
 
 export interface IntLit extends Node {

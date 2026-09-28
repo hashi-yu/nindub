@@ -10,7 +10,7 @@
 
 この開発手法を **Nindub Driven Development** と呼ぶ。
 
-用語は [GLOSSARY.ja.md](GLOSSARY.ja.md)、これまでの設計上の決定とその理由は [docs/DESIGN.ja.md](docs/DESIGN.ja.md)、Map がどう見えるかは [docs/LANGUAGE.ja.md](docs/LANGUAGE.ja.md) と [examples/todo.nindub](examples/todo.nindub) を参照。
+用語は [GLOSSARY.ja.md](GLOSSARY.ja.md)、これまでの設計上の決定とその理由は [docs/DESIGN.ja.md](docs/DESIGN.ja.md)、Map がどう見えるかは [docs/LANGUAGE.ja.md](docs/LANGUAGE.ja.md) と [examples/todo.nindub](examples/todo.nindub)(小さい例)、[examples/shop.nindub](examples/shop.nindub)(受注管理)を参照。
 
 ## 開発
 
@@ -19,9 +19,15 @@
 ```sh
 npm install
 npm run check                                  # 型検査とテスト
-node src/cli.ts parse examples/todo.nindub     # Map の AST を JSON で表示
+node src/cli.ts outline examples/todo.nindub   # 領土の俯瞰:region、road、署名
 node src/cli.ts run examples/todo.nindub       # Map を単体で動かす。:help でコマンド一覧
+node src/cli.ts parse examples/todo.nindub     # Map の AST を JSON で表示
+
+node src/cli.ts serve examples/todo.nindub     # Map 自身を Terrain として提供し、別のシェルで:
+node src/cli.ts survey examples/todo.nindub --terrain http://127.0.0.1:PORT --steps 200
 ```
+
+Terrain が Survey にどう答えるかは [docs/SURVEY.ja.md](docs/SURVEY.ja.md)、実際に答える Terrain は [examples/todo-terrain](examples/todo-terrain/README.ja.md) と [examples/shop-terrain](examples/shop-terrain/README.ja.md) を参照。書いている途中で Survey が見つけた Drift も記録してある。
 
 ## 文書について
 

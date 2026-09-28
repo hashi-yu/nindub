@@ -10,7 +10,7 @@ You write your whole project as a single **Map** in Nindub. The Map is executabl
 
 We call this way of working **Nindub Driven Development**.
 
-See [GLOSSARY.md](GLOSSARY.md) for the vocabulary, [docs/DESIGN.md](docs/DESIGN.md) for the design decisions made so far and why, and [docs/LANGUAGE.md](docs/LANGUAGE.md) with [examples/todo.nindub](examples/todo.nindub) for what a Map looks like.
+See [GLOSSARY.md](GLOSSARY.md) for the vocabulary, [docs/DESIGN.md](docs/DESIGN.md) for the design decisions made so far and why, and [docs/LANGUAGE.md](docs/LANGUAGE.md) with [examples/todo.nindub](examples/todo.nindub) (small) and [examples/shop.nindub](examples/shop.nindub) (an order-management system) for what a Map looks like.
 
 ## Development
 
@@ -19,9 +19,15 @@ The tool is written in TypeScript and runs on Node 22.18 or later with no build 
 ```sh
 npm install
 npm run check                                  # typecheck + tests
-node src/cli.ts parse examples/todo.nindub     # print a Map's AST as JSON
+node src/cli.ts outline examples/todo.nindub   # the territory: regions, roads, signatures
 node src/cli.ts run examples/todo.nindub       # run the Map alone; type :help
+node src/cli.ts parse examples/todo.nindub     # print a Map's AST as JSON
+
+node src/cli.ts serve examples/todo.nindub     # serve the Map itself as a Terrain, then in another shell:
+node src/cli.ts survey examples/todo.nindub --terrain http://127.0.0.1:PORT --steps 200
 ```
+
+See [docs/SURVEY.md](docs/SURVEY.md) for how a Terrain answers Survey, and [examples/todo-terrain](examples/todo-terrain/README.md) and [examples/shop-terrain](examples/shop-terrain/README.md) for Terrains that do, with the Drifts Survey found while they were written.
 
 ## Documentation
 
