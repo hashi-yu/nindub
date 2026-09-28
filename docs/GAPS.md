@@ -2,7 +2,7 @@
 
 English | [日本語](GAPS.ja.md)
 
-**Status: proposal.** This document collects the gaps found in Nindub as of `main` at f2596b5 (which includes the interpreter and Remap), and proposals to close them. Nothing here is decided. A proposal that is adopted is recorded in [DESIGN.md](DESIGN.md) as D20 or later, and marked "decided" here.
+**Status: proposal.** This document collects the gaps found in Nindub as of `main` at f2596b5 (which includes the interpreter and Remap), and proposals to close them. Nothing here is decided. A proposal that is adopted is recorded in [DESIGN.md](DESIGN.md) as D23 or later, and marked "decided" here. Changes on `main` since f2596b5 are summarized under "Since f2596b5" below.
 
 Vocabulary follows [GLOSSARY.md](../GLOSSARY.md).
 
@@ -12,6 +12,24 @@ Vocabulary follows [GLOSSARY.md](../GLOSSARY.md).
 - Part 2 lists the proposals (P1, P2, ...), ordered from fewest dependencies to most. Each one names the gaps it closes and the existing decisions it would change.
 - Part 3 checks that the proposals do not conflict with each other.
 - Part 4 lists what remains open even if every proposal is adopted.
+
+## Since f2596b5
+
+`main` at 05e2c47 added regions and roads (D21), a generalized Surface rule (D20), and Survey over a harness protocol (D22), with Todo and Shop Terrains. Checked against it:
+
+| Gap | Now |
+|---|---|
+| H10 | **Resolved.** A query can no longer modify state, emit an effect, or call a port. This is P3, stricter than proposed (no port calls at all). |
+| H11, H12, H14 | Still reproduce: `insert` overwrites a row with the same id, nested actions check invariants midway, field types are not checked. |
+| H15 | **Partly resolved.** Harness replies carry effect names, and the wire decoder uses the declared types. A `form`'s submit is still opaque. |
+| H21 | **Partly resolved.** The wire encoding is defined for the harness protocol (`docs/SURVEY.md`). Real routes are not observed yet (D22). |
+| H23 | **Resolved.** `POST /__nindub/reset`. |
+| H24 | **Resolved for Survey.** Port responses are generated from the declared types. |
+| H1, H2 | Acknowledged by D22: the protocol may bypass the Terrain's real HTTP layer. Not yet closed. |
+| H9 | Confirmed: Survey of the Shop found a collation Drift in `products()`. |
+| H31 | Acknowledged in the Shop findings; coverage is the open question. |
+| H32 | **Reframed by D20.** "Observable" became "checkable by some instrument". P13's first item is superseded. |
+| H33 | **Resolved by D21.** Regions, `impl` blocks and `nindub outline` give the Map its Scale. |
 
 ---
 
@@ -288,7 +306,7 @@ action en() -> Result<Error, Error> { Ok(Error::Bad) }
 | P7 and P10 | One Pin coverage check serves both regeneration of the index and the check after a Remap. |
 | P10 and P11 | An Amendment that changes the shape of state carries P11's migration function and the result of the Survey that checked it. |
 
-The proposals were also checked against the existing decisions. None overturns the core of D1–D19. Only the places below would change, and each can be handled by adding an entry at D20 or later and marking the old text as superseded, without renumbering:
+The proposals were also checked against the existing decisions. None overturns the core of D1–D22. Only the places below would change, and each can be handled by adding an entry at D23 or later and marking the old text as superseded, without renumbering:
 
 - D6's Port row (P5)
 - an extension to D8 (P5)
