@@ -128,6 +128,15 @@ export class Generator {
     }
   }
 
+  /** Whether `v` is an id that has been seen where this type was expected. */
+  fits(v: Value, type: ast.Type): boolean {
+    if (v.t !== "id") return false;
+    const t = this.env.concrete(type);
+    if (t.kind !== "named") return false;
+    const target = t.name === "Id" ? (t.args[0]?.kind === "named" ? t.args[0].name : "*") : this.env.isOpaque(t.name) ? t.name : null;
+    return target !== null && this.pool(target).has(v.v);
+  }
+
   private pool(target: string): Set<string> {
     let p = this.pools.get(target);
     if (!p) {
@@ -225,7 +234,7 @@ export async function survey(map: ast.MapDecl, terrain: Terrain, options: Survey
   const rng = new Random(seed);
   const resolved = resolve(map);
   const env = new TypeEnv(resolved);
-  const gen = new Generator(rng, env);
+  let gen = new Generator(rng, env);
 
   // Callables Survey drives: actions and queries (views need the browser instrument).
   const callables = [...env.callables.values()].filter(
@@ -235,15 +244,17 @@ export async function survey(map: ast.MapDecl, terrain: Terrain, options: Survey
 
   let tick = 0n;
   let counter = 0;
-  const mapRt = new Runtime(map, {
-    clock: () => tick++,
-    ids: () => `id-${++counter}`,
-    ports: (port, fn) => {
-      const decl = env.ports.get(port)?.fns.find((f) => f.name === fn);
-      if (!decl) throw new Error(`no port fn ${port}.${fn}`);
-      return gen.generate(decl.returns);
-    },
-  });
+  const newRuntime = () =>
+    new Runtime(map, {
+      clock: () => tick++,
+      ids: () => `id-${++counter}`,
+      ports: (port, fn) => {
+        const decl = env.ports.get(port)?.fns.find((f) => f.name === fn);
+        if (!decl) throw new Error(`no port fn ${port}.${fn}`);
+        return gen.generate(decl.returns);
+      },
+    });
+  let mapRt = newRuntime();
 
   const scripted = options.script
     ? options.script
@@ -318,13 +329,43 @@ export async function survey(map: ast.MapDecl, terrain: Terrain, options: Survey
     const c = rng.pick(callables);
     return { name: c.name, args: c.params.map((p) => gen.generate(p.type)) };
   };
-  // One rule: of a few candidate actions tried on a fork, make one whose
-  // kind of step this run has not made yet. Otherwise pick at random.
-  const lookahead = (step: number): { name: string; args: Value[] } => {
+  // Candidate arguments come together from one row of the Map's state, so a
+  // call names things that belong together (a user and a sku in that user's
+  // cart), as stateful property-based testing draws from the model's state.
+  // Ids the row does not offer, and other values, are generated as usual.
+  const idsIn = (v: Value, out: Value[]): void => {
+    switch (v.t) {
+      case "id":
+        out.push(v);
+        break;
+      case "vec":
+        v.items.forEach((x) => idsIn(x, out));
+        break;
+      case "struct":
+        Object.values(v.fields).forEach((x) => idsIn(x, out));
+        break;
+      case "enum":
+        v.payload.forEach((x) => idsIn(x, out));
+        break;
+    }
+  };
+  const argsFromState = (a: ast.Action, table: Value | undefined): Value[] => {
+    const ids: Value[] = [];
+    if (table?.t === "table" && table.rows.size > 0) idsIn(rng.pick([...table.rows.values()]), ids);
+    return a.params.map((p) => {
+      const offered = ids.filter((v) => gen.fits(v, p.type));
+      return offered.length > 0 && rng.chance(0.8) ? rng.pick(offered) : gen.generate(p.type);
+    });
+  };
+  const CANDIDATES = 8; // per action per step, drawn from the state's tables in turn
+  // Of a few candidate actions tried on a fork, make one whose kind of step
+  // this run has not made yet. Otherwise pick at random.
+  const lookahead = (step: number): { name: string; args: Value[]; novel: boolean } => {
     const novel: { name: string; args: Value[] }[] = [];
+    const tables = mapRt.states().map((n) => mapRt.getState(n)).filter((v) => v.t === "table" && v.rows.size > 0);
     for (const a of actions) {
-      for (let k = 0; k < 3; k++) {
-        const args = a.params.map((p) => gen.generate(p.type));
+      for (let k = 0; k < CANDIDATES; k++) {
+        const args = argsFromState(a, tables[k % Math.max(1, tables.length)]);
         let n = 0;
         const fork = mapRt.fork({
           clock: () => BigInt(step * 1000 + n++),
@@ -342,7 +383,22 @@ export async function survey(map: ast.MapDecl, terrain: Terrain, options: Survey
         }
       }
     }
-    return novel.length > 0 ? rng.pick(novel) : random();
+    return novel.length > 0 ? { ...rng.pick(novel), novel: true } : { ...random(), novel: false };
+  };
+  // A run can wedge itself (the Shop: the first `grant` names a user nobody
+  // knows, and nobody can ever add a sku). When nothing new has happened for
+  // a while, start over on both sides, as a fuzzer restarts. `:reset` in a
+  // script replays it.
+  const RESTART_AFTER = 30;
+  let sinceNovel = 0;
+  const RESET: Step = { call: ":reset", map: { result: null, effects: [], ports: [] } };
+  const restart = async (): Promise<void> => {
+    await terrain.reset?.();
+    mapRt = newRuntime();
+    gen = new Generator(rng, env);
+    seen.clear();
+    lastWrite.clear();
+    sinceNovel = 0;
   };
 
   // The state channel (D23), while the Terrain answers.
@@ -377,13 +433,27 @@ export async function survey(map: ast.MapDecl, terrain: Terrain, options: Survey
   for (let i = 0; i < total; i++) {
     let name: string;
     let args: Value[];
+    if (scripted && scripted[i] === ":reset") {
+      await restart();
+      report.steps.push(RESET);
+      continue;
+    }
+    if (!scripted && plan && sinceNovel >= RESTART_AFTER) {
+      await restart();
+      report.steps.push(RESET);
+      continue;
+    }
     if (scripted) {
       const expr = parseExpr(scripted[i]!);
       if (expr.kind !== "call" || expr.callee.kind !== "path") throw new Error(`line ${i + 1}: expected a call`);
       name = expr.callee.segments.join("::");
       args = expr.args.map((a) => mapRt.evalTop(a.value));
+    } else if (plan) {
+      const chosen = lookahead(i + 1);
+      ({ name, args } = chosen);
+      sinceNovel = chosen.novel ? 0 : sinceNovel + 1;
     } else {
-      ({ name, args } = plan ? lookahead(i + 1) : random());
+      ({ name, args } = random());
     }
     const call = printCall(name, args);
 

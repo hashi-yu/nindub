@@ -31,7 +31,13 @@ Views are not surveyed yet; that needs the browser instrument.
 
 ## Planning the next call (`--plan`)
 
-By default step 1 picks a call at random. With `--plan`, Survey tries a few candidate actions on a fork of the Map and makes one that does something this run has not done yet; if there is none, it picks at random. "Something" is the kind of step: the action, the branches its body took, and the shape of what it wrote (how many lines a cart has, whether a sequence grew or was reordered). Random picks rarely build the states a Drift hides in; this is coverage guidance as in fuzzing, with the Map's own control flow and state as the coverage. The Terrain only ever sees the call that was chosen.
+By default step 1 picks a call at random. With `--plan`, Survey uses the Map to choose, by three rules that know nothing about any particular Map:
+
+- **Arguments come from the state.** A candidate call's ids are taken together from one row of the Map's state (a user and a sku in that user's cart), the way stateful property-based testing draws from its model. Other values, and ids the row does not offer, are generated as usual.
+- **Prefer something new.** Candidate actions are tried on a fork of the Map, and one whose kind of step this run has not made yet is made; if there is none, a random call. A kind of step is the action, the branches its body took, and the shape of what it wrote (how many lines a cart has, whether a sequence grew or was reordered). This is coverage guidance as in fuzzing, with the Map's own control flow and state as the coverage.
+- **Start over when stuck.** When nothing new has happened for 30 steps, both sides are reset (`:reset` in the report and in scripts). The Shop can wedge itself: a first `grant` to a user nobody knows leaves nobody able to add a sku.
+
+The Terrain only ever sees the call that was chosen.
 
 When a Drift is found, the report names the step that last wrote each state cell behind it:
 
@@ -42,7 +48,7 @@ When a Drift is found, the report names the step that last wrote each state cell
     carts[u2] was last written at step 9
 ```
 
-Measured on the Shop before Amendment 2 (the Map moved a merged cart line to the end, the Terrain kept it in place), seeds 10 to 39, 600 steps: random generation found the Drift in 2 of 30 runs, planning in 10 of 30, planning with the state channel in 12 of 30 (at 1200 steps: 3, 13 and 14). With the state channel the Drift shows at the `add_to_cart` step itself; without it, when something later reads the order. Reaching the state that hides a Drift is what limits the rate, not seeing it.
+Measured on the Shop before Amendment 2 (the Map moved a merged cart line to the end, the Terrain kept it in place), seeds 10 to 39: random generation found the Drift in 2 of 30 runs of 600 steps; planning with the state channel in 27 of 30 (600 steps) and 29 of 30 (1200), at the `add_to_cart` step itself. No false Drift on the current Map. This is search, so it is a rate, not a guarantee (D12); an enumerative explorer over the Map's abstract states is the open alternative.
 
 ## The harness protocol
 
