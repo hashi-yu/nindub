@@ -14,6 +14,11 @@
 //   pure, so candidates are tried on the Map itself. This finds a Drift at
 //   the first step where the Terrain's output could show it, and names the
 //   step that wrote the cell.
+// When the Terrain keeps its state in Nindub's store, Survey also reads that
+// state after every step and compares it with the Map's (D23): a fourth
+// channel, `state`. A divergence then shows at the step that caused it,
+// whether or not anything reads it, and the debts above are settled at once.
+//
 // - Otherwise a few candidate actions are tried on a fork of the Map, and
 //   the one that does something new is made. "New" is a transition not
 //   seen in this run: the action, the branches it took, and the shape of
@@ -39,9 +44,12 @@ export interface SurveyOptions {
   script?: string;
   // Plan the next call on the Map: read what was just written (see above).
   plan?: boolean;
+  // Compare the Terrain's declared state with the Map's after every step,
+  // when the Terrain offers it (D23). Default true.
+  state?: boolean;
 }
 
-export type Channel = "result" | "effects" | "ports";
+export type Channel = "result" | "effects" | "ports" | "state";
 
 export interface Drift {
   step: number; // 1-based
@@ -425,13 +433,20 @@ export async function survey(map: ast.MapDecl, terrain: Terrain, options: Survey
       const known = gen.knownIds(p.type);
       if (known.length === 0) return [gen.generate(p.type), gen.generate(p.type), gen.generate(p.type)];
       const hot = [...focus].reverse().filter((x) => known.some((v) => v.t === "id" && v.v === x));
-      const picks = [...new Set(hot)].slice(0, 4).map(id);
+      const picks = [...new Set(hot)].slice(0, 5).map(id);
       picks.push(gen.generate(p.type));
       return picks;
     });
     let tuples: Value[][] = [[]];
     for (const vs of per) tuples = tuples.flatMap((t) => vs.map((v) => [...t, v]));
-    while (tuples.length > 24) tuples.splice(rng.int(0, tuples.length - 1), 1);
+    if (tuples.length > 24) {
+      // Keep the tuples whose ids were seen together most recently: a call
+      // that names the same cart and one of its skus beats an arbitrary pair.
+      const recency = (v: Value) => (v.t === "id" ? Math.max(0, focus.lastIndexOf(v.v)) : 0);
+      const keyed = tuples.map((t) => ({ t, k: t.reduce((n, v) => n + recency(v), 0) + rng.next() }));
+      keyed.sort((a, b) => b.k - a.k);
+      tuples = keyed.slice(0, 24).map((x) => x.t);
+    }
     return tuples;
   };
   const lookahead = (step: number): { name: string; args: Value[] } => {
@@ -475,6 +490,27 @@ export async function survey(map: ast.MapDecl, terrain: Terrain, options: Survey
       if (!best || score > best.score) best = { name: a.name, args, score };
     }
     return best ?? random();
+  };
+
+  // The state channel (D23), while the Terrain answers.
+  let stateOn = options.state ?? true;
+  const stateNames = mapRt.states();
+  const compareState = (actual: Record<string, unknown>): { name: string; map: unknown; terrain: unknown } | null => {
+    for (const name of stateNames) {
+      const value = mapRt.getState(name);
+      const expected = toJSON(value);
+      const got = actual[name];
+      if (value.t === "table") {
+        // A Table is a set of rows keyed by id: order is not part of it.
+        const byId = (rows: unknown): unknown =>
+          Array.isArray(rows) ? [...rows].sort((a, b) => String((a as { id: unknown })?.id).localeCompare(String((b as { id: unknown })?.id))) : rows;
+        if (same(byId(expected), byId(got))) continue;
+      } else if (same(expected, got)) {
+        continue;
+      }
+      return { name, map: expected, terrain: got === undefined ? "(missing)" : got };
+    }
+    return null;
   };
 
   const report: Report = { seed, steps: [], drift: null, error: null };
@@ -556,6 +592,31 @@ export async function survey(map: ast.MapDecl, terrain: Terrain, options: Survey
     for (const cell of mapObs.writes) {
       debt.set(cell, i + 1);
       lastWrite.set(cell, i + 1);
+    }
+    // The state channel settles every debt at once.
+    if (stateOn && terrain.state) {
+      let actual: Record<string, unknown> | null;
+      try {
+        actual = await terrain.state();
+      } catch (e) {
+        report.error = { step: i + 1, call, message: `terrain: ${(e as Error).message}` };
+        break;
+      }
+      if (actual === null) {
+        stateOn = false;
+      } else {
+        const diff = compareState(actual);
+        if (diff) {
+          const blame = [...lastWrite]
+            .filter(([cell]) => cell === diff.name || cell.startsWith(diff.name + "["))
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 5)
+            .map(([cell, step]) => ({ cell, step }));
+          report.drift = { step: i + 1, call, channel: "state", map: { [diff.name]: diff.map }, terrain: { [diff.name]: diff.terrain }, blame };
+          break;
+        }
+        debt.clear();
+      }
     }
     const errKey = errorKey(mapObs.result);
     if (errKey !== null) {

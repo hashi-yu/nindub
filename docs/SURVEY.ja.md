@@ -25,6 +25,7 @@ create("u1", "Buy milk")
 2. Survey がその呼び出しを Map で実行する。Observation には、結果、出力された effect、port へのリクエストと注入した応答、消費した時刻と id が記録される。
 3. Survey が同じ呼び出しを、**同じ注入値とともに** Terrain へ送る。時刻、id、port の応答を順序どおりに(D8)。予備の port 応答も添えるので、Map が呼ばなかった port を呼ぶ Terrain も最後まで実行できる。
 4. Survey が 3 つの経路を順に比べる。**結果**、**effect**、**port**(どの port の関数をどの引数で呼んだか)。最初の差が Drift であり、実行はそこで止まり、再現する列を出す。
+5. Terrain が state を Nindub の store(下記)に保存していれば、Survey はその state を読み、Map の state と比べる。**state** 経路である(D23)。Table は id をキーにした行の集合として比べ、Vec は順序を保つ。状態のずれは、誰かが読むかどうかに関わらず、原因のステップで現れる。`--no-state` で切れる。
 
 view はまだ測量しない。ブラウザの計器が必要である。
 
@@ -45,7 +46,7 @@ view はまだ測量しない。ブラウザの計器が必要である。
     carts[u2] was last written at step 9
 ```
 
-Amendment 2 の前の Shop(Map は合算したカートの行を末尾に動かし、Terrain はその場に残す)で seed 10〜39 を測った。乱数生成では 600 手の実行 30 回のうち 2 回で Drift を見つけ、計画では 16 回。1200 手ではそれぞれ 3 回と 23 回。計画はステップの約半分を読み取りに使う。できないのは、既知の引数の query では読めない状態に届くことで、これは Terrain を外から観測することの限界として残る。
+Amendment 2 の前の Shop(Map は合算したカートの行を末尾に動かし、Terrain はその場に残す)で seed 10〜39 を測った。乱数生成では 600 手の実行 30 回のうち 2 回で Drift を見つけ、計画では 19 回。1200 手ではそれぞれ 3 回と 23 回。state 経路がなければ計画はステップの約半分を読み取りに使い、あれば読み取りは要らず、Drift は `add_to_cart` のステップそのもので現れる。どちらでも、率を制限しているのは、ずれを見ることではなく、ずれが隠れる状態に到達することである。
 
 ## ハーネスプロトコル
 
@@ -83,7 +84,27 @@ Amendment 2 の前の Shop(Map は合算したカートの行を末尾に動か�
 - `ports` は呼び出しが行ったリクエスト。順序どおり。
 - Terrain が呼び出しを完了できなかった場合(注入値が尽きた、例外が出た)は、`"error": "..."` と、そこまでに要求した `ports` を返す。Survey はこれを通信の失敗ではなく Drift として報告する。
 
+`POST {terrain}/__nindub/state` — 宣言された state を Map の形で返す(D23):
+
+```json
+{ "todos": [{ "id": "id-1", "owner": "u1", "title": "Buy milk", "done": true, "created_at": 0 }] }
+```
+
+state を Nindub の store に保存している Terrain は、これを何も書かずに得る(下記)。そうでない Terrain は 404 を返し、Survey は観測だけを比べる。
+
 `nindub serve examples/todo.nindub` は Map 自身をこのプロトコルの後ろで提供する。準拠する Terrain が何を答えるべきかの参照実装である。
+
+## Nindub の store
+
+D23 の下では、Map の `state` 宣言は Terrain がその state を保存する形でもあり、Nindub はその形を store として提供する。Survey が state を読むためのコードを Terrain の作者が書くことはない。TypeScript では:
+
+```ts
+import { NindubStore } from "nindub/src/store.ts";
+const store = new NindubStore(parse(readFileSync("shop.nindub", "utf8")));
+const carts = store.table<CartRow>("carts"); // get, has, put, delete, all, size
+```
+
+`put` はワイヤ形式の行を受け取り、宣言された行の型に照らして検査する。形の違う行は、後で見つかるのではなく、書き込む時点で拒否される。`store.state()` が `POST /__nindub/state` の答えであり、`store.snapshot()` と `store.restore()` で action をロールバックできる。store が固定するのは宣言された state の形だけで、索引、キャッシュ、非正規化した複製、その他 Terrain がデータに到達する方法はすべて Terrain のものである。最初の backend はメモリで、`Postgres` region は D21 の DB 計器ができればそれが直接読む。
 
 ## ワイヤ形式
 

@@ -27,13 +27,17 @@ export interface CartRow {
   lines: Line[];
 }
 
-/** @nindub enum Status */
-export type Status =
-  | { kind: "Placed" }
-  | { kind: "Paid"; charge: ChargeId }
-  | { kind: "Shipped"; charge: ChargeId }
-  | { kind: "Cancelled" }
-  | { kind: "Refunded" };
+/** @nindub enum Status — stored in the wire encoding, as the store requires (D23). */
+export type Status = "Status::Placed" | { Paid: ChargeId } | { Shipped: ChargeId } | "Status::Cancelled" | "Status::Refunded";
+
+export function statusKind(s: Status): "Placed" | "Paid" | "Shipped" | "Cancelled" | "Refunded" {
+  if (typeof s === "string") return s.slice("Status::".length) as "Placed" | "Cancelled" | "Refunded";
+  return "Paid" in s ? "Paid" : "Shipped";
+}
+export function statusCharge(s: Status): ChargeId {
+  if (typeof s === "string") throw new Error(`status ${s} has no charge`);
+  return "Paid" in s ? s.Paid : s.Shipped;
+}
 
 /** @nindub struct Order */
 export interface Order {
@@ -88,7 +92,7 @@ export interface Refunded {
   total: number;
 }
 
-/** @nindub region db */
+/** @nindub region db — Nindub's store, in the Map's shape (D23). */
 export interface Store {
   skus: Table<Sku>;
   carts: Table<CartRow>;
@@ -98,6 +102,8 @@ export interface Store {
   snapshot(): unknown;
   restore(s: unknown): void;
   clear(): void;
+  /** Every state in the wire encoding: what `POST /__nindub/state` answers. */
+  state(): Record<string, unknown>;
 }
 
 export interface Table<T extends { id: string }> {

@@ -162,7 +162,7 @@ test("planning reads what was just written and builds on it, so the cart-line Dr
     "let others = existing.lines.filter(|l| l.sku != sku);\n        carts.insert(CartRow { id: user, lines: others.push(Line { sku, qty: qty_now, unit_price: s.price }) });",
   );
   assert.notEqual(old, shopSrc, "the mutation applied");
-  const r = await survey(parse(old), terrainOf(shopSrc), { seed: 4, steps: 400, plan: true });
+  const r = await survey(parse(old), terrainOf(shopSrc), { seed: 4, steps: 400, plan: true, state: false });
   assert.ok(r.drift, "expected drift");
   assert.equal(r.drift.channel, "result");
   assert.match(r.drift.call, /^cart\(/);
@@ -173,12 +173,43 @@ test("planning reads what was just written and builds on it, so the cart-line Dr
   assert.match(r.steps[r.drift.step - 2]!.call, /^add_to_cart\(/);
 });
 
+// With the state channel (D23) the same Drift shows at the step that causes
+// it, in the cell it changed, and no read has to be planned for it.
+test("the state channel finds the cart-line Drift at the add_to_cart step itself", async () => {
+  const shopSrc = readFileSync(new URL("../examples/shop.nindub", import.meta.url), "utf8");
+  const old = shopSrc.replace(
+    /let merged = Line \{ sku, qty: qty_now, unit_price: s\.price \};\n\s*let lines = match current \{\n\s*Some\(_\) => existing\.lines\.map\(\|l\| if l\.sku == sku \{ merged \} else \{ l \}\),\n\s*None => existing\.lines\.push\(merged\),\n\s*\};\n\s*carts\.insert\(CartRow \{ id: user, lines \}\);/,
+    "let others = existing.lines.filter(|l| l.sku != sku);\n        carts.insert(CartRow { id: user, lines: others.push(Line { sku, qty: qty_now, unit_price: s.price }) });",
+  );
+  const r = await survey(parse(old), terrainOf(shopSrc), { seed: 12, steps: 300, plan: true });
+  assert.equal(r.error, null, JSON.stringify(r.error));
+  assert.ok(!r.steps.some((s) => s.probe), "no reads had to be planned");
+  const found = r.drift;
+  assert.ok(found, "expected drift");
+  assert.equal(found.channel, "state");
+  assert.match(found.call, /^add_to_cart\(/);
+  assert.ok("carts" in (found.map as object));
+  assert.equal(found.blame[0]!.step, found.step, "the very step that wrote the cart is blamed");
+});
+
 test("planning finds no Drift where there is none, and stays deterministic", async () => {
   const shopSrc = readFileSync(new URL("../examples/shop.nindub", import.meta.url), "utf8");
-  const a = await survey(parse(shopSrc), terrainOf(shopSrc), { seed: 5, steps: 200, plan: true });
+  const a = await survey(parse(shopSrc), terrainOf(shopSrc), { seed: 5, steps: 200, plan: true, state: false });
   assert.equal(a.drift, null, JSON.stringify(a.drift));
   assert.equal(a.error, null, JSON.stringify(a.error));
   assert.ok(a.steps.some((s) => s.probe), "some steps were planned reads");
-  const b = await survey(parse(shopSrc), terrainOf(shopSrc), { seed: 5, steps: 200, plan: true });
+  const b = await survey(parse(shopSrc), terrainOf(shopSrc), { seed: 5, steps: 200, plan: true, state: false });
   assert.deepEqual(a.steps.map((s) => s.call), b.steps.map((s) => s.call));
+});
+
+test("a Terrain whose stored state differs from the Map's is caught by the state channel, with the same outputs", async () => {
+  // The Terrain clobbers the creation time when it completes a todo: every
+  // observation still matches until something reads the row.
+  const buggy = todoSrc.replace(/todos\[id\]\.done = true;/, "todos[id].done = true;\n        todos[id].created_at = 0;");
+  assert.notEqual(buggy, todoSrc, "the mutation applied");
+  const r = await survey(todo(), terrainOf(buggy), { seed: 3, steps: 300 });
+  assert.ok(r.drift, "expected drift");
+  assert.equal(r.drift.channel, "state");
+  assert.match(r.drift.call, /^complete\(/);
+  assert.ok("todos" in (r.drift.map as object));
 });

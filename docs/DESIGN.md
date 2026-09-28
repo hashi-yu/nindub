@@ -50,6 +50,8 @@ For user interfaces the line is drawn the same way. What each screen shows and w
 
 Survey runs the same sequence of inputs against the Map and the Terrain and compares what comes out. It never inspects the Terrain's internal state. Four channels are observed:
 
+*Amended by D23: Survey also compares the Terrain's declared state, which under D23 has the Map's shape and is read by Nindub's own code. "Never state" now means "never through a mapping anyone writes".*
+
 | Channel | What is compared | Precedent |
 |---|---|---|
 | Results | return values and declared errors of actions and queries | model-based testing |
@@ -167,6 +169,8 @@ What separates a Map from a spec is therefore not its content but its checkabili
 
 **Rejected:** keeping the Map to user-observable behavior. It is principled, but it leaves the whole "how" to the Terrain, which is exactly what a human who owns a project wants a say in, and it makes the Map indistinguishable from an executable spec.
 
+*Amended by D23: the shape in which declared state is stored is no longer the Terrain's discretion; it is the Map's shape.*
+
 ### D21. Regions and roads: the territory at the top, the detail below
 
 A Map is structured as a territory of **regions** connected by **roads**, with bodies in `impl` blocks after the overview.
@@ -186,6 +190,22 @@ Survey's first Projection is one HTTP endpoint on the Terrain, `POST /__nindub/c
 This closes the loop before the instruments that drive a Terrain's real routes (`Service`), screens (`Client`) and database (`Postgres`) exist. It is a limitation, and it is stated as one: the endpoint could bypass the Terrain's real HTTP layer, so a green Survey over the protocol says the Terrain's *logic* matches the Map, not yet that its API does. The region-kind instruments of D21 replace it; the protocol stays as the reference for what an Observation of a Terrain contains.
 
 **Rejected:** starting with real routes and a Pin index. It needs a side channel for injections on every request, a way to collect effects and port requests per request, and a browser, before the first Drift can be seen. The protocol needs none of that. Also rejected: comparing Terrain state. D6 stands; the protocol carries no state.
+
+*Amended by D23: the protocol gains `POST /__nindub/state`, answered by Nindub's store, not by code the Terrain's author writes.*
+
+### D23. Declared state has the Map's shape, and Survey reads it
+
+A Map's `state` declarations are also the shape its Terrain keeps that state in. Nindub gives a Terrain that shape as a store (`src/store.ts`): one table per `state name: Table<T>`, rows in the wire encoding, checked against `T` when they are written. The store answers `POST /__nindub/state` with every state in the Map's shape, and Survey compares that with the Map's own state after every step: a fourth channel, `state`. A Table is compared as a set of rows keyed by id; a Vec keeps its order.
+
+**Why.** Observations find a divergence in state only when something reads it. Planning the next call (`nindub survey --plan`) brings the read forward, but a run that never reads the changed cell never finds the Drift, and on the Shop the cart-line Drift stayed at 16 of 30 runs of 600 steps. Divergence starts in the Terrain's state; that is where Survey should look, and D9 (every state is reachable through a query or view) is a design principle for Maps that Survey should not have to lean on.
+
+**Why this way.** D7 rejected comparing state because it needs a function from the Terrain's storage to the Map's state, which the Terrain's author (AI) would write and could write to pass. Under D23 there is no such function: the storage already has the Map's shape, the code that reads it is Nindub's, and the Terrain's author writes nothing for verification. A Terrain that keeps a shadow store and feeds Nindub's store as decoration gains nothing, because its outputs then come from one store and its state from the other, and both channels cannot agree with the Map unless both are right. The state channel can only fail a Survey, never pass one, by construction rather than by rule. What the Terrain gives up is the physical shape of declared state; indexes, caches, denormalized copies, code structure and language stay its own. D11 already accepts constraints of this kind.
+
+**What changes.** D6's "never state" is amended as above. D20's storage discretion no longer covers the shape of declared state. D22's protocol gains the endpoint, written by Nindub, so the one AI-written piece D22 accepted (the harness) is not joined by a second. The Todo Terrain's Amendment 1 ("Postgres declared, memory used", ruled discretion) stands, reworded: memory is the store's in-memory backend. When the `Postgres` reader of D21 exists, it reads the same shape from the database and the endpoint is not needed for that region.
+
+**Measured** on the Shop before Amendment 2 (the Map moved a merged cart line to the end, the Terrain kept it in place), seeds 10 to 39: random generation found the Drift in 2 of 30 runs of 600 steps; planning in 19 of 30 (600) and 23 of 30 (1200); planning with the state channel in 11 of 30 (600) and 23 of 30 (1200), each time at the `add_to_cart` step itself and without a planned read. Seeing the divergence is solved; reaching the state that hides it is what remains, and that is the coverage question under Open questions.
+
+**Rejected:** a snapshot mapping written by the Terrain's author and used only to fail a Survey (the proposal in [hashi-yu/nindub#14](https://github.com/hashi-yu/nindub/pull/14)). It is sound, but it adds a second AI-written piece to the protocol with no planned exit, and it needs a rule to stay fail-only where D23 is fail-only by construction. Also rejected: a mapping trusted as a full oracle, as Quint Connect does; it trusts whoever writes the mapping, which here is the party under test. Also rejected: observations and planning alone; the ceiling above, and state that no query with known arguments reads stays invisible.
 
 ## Consequences worth noting
 
@@ -213,7 +233,7 @@ This closes the loop before the instruments that drive a Terrain's real routes (
 - **Observing views in the Terrain.** The accessibility tree is the candidate mechanical Projection for browser UIs. Whether it is stable enough to compare is untested.
 - **Concurrency.** Events and an injected clock cover asynchrony in principle; interleavings have not been thought through.
 - **Changing the Map.** When state shape changes, the Terrain's stored data must migrate. Who writes the migration, and how Survey checks it, is open.
-- **Survey coverage.** How to steer input generation using invariants, and how to report what was explored. The Shop showed the cost of independent random picks: a Drift needing a three-call setup appeared in 2 of 30 runs. Candidates: bias toward calls whose arguments are available (ids in pools), sequences that build on the previous result, and coverage reporting per action outcome. First result: `nindub survey --plan` (read what was just written; otherwise make the rarest kind of step, tried on a fork of the Map) finds that Drift in 16 of 30 runs of 600 steps and 23 of 30 of 1200 (`docs/SURVEY.md`). Whether it becomes the default is not decided.
+- **Survey coverage.** How to steer input generation using invariants, and how to report what was explored. The Shop showed the cost of independent random picks: a Drift needing a three-call setup appeared in 2 of 30 runs. Candidates: bias toward calls whose arguments are available (ids in pools), sequences that build on the previous result, and coverage reporting per action outcome. First result: `nindub survey --plan` (read what was just written; otherwise make the rarest kind of step, tried on a fork of the Map) finds that Drift in 19 of 30 runs of 600 steps and 23 of 30 of 1200 (`docs/SURVEY.md`). With the state channel (D23) the read is unnecessary and the Drift shows at the step that causes it, but the rate is the same: reaching the state is the open part. Whether planning becomes the default is not decided.
 
 ## Roadmap
 

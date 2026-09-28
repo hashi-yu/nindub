@@ -1,6 +1,6 @@
 // region api::staff
 
-import { type Deps, type Order, type OrderId, type Result, type SkuId, type UserId, err, ok } from "../domain.ts";
+import { type Deps, type Order, type OrderId, type Result, type SkuId, type UserId, err, ok, statusCharge, statusKind } from "../domain.ts";
 
 const isStaff = (deps: Deps, user: UserId) => deps.store.staff.has(user);
 
@@ -37,8 +37,8 @@ export async function ship(deps: Deps, staffUser: UserId, id: OrderId): Promise<
   if (!isStaff(deps, staffUser)) return err("Forbidden");
   const order = deps.store.orders.get(id);
   if (!order) return err("NotFound");
-  if (order.status.kind !== "Paid") return err("NotShippable");
-  order.status = { kind: "Shipped", charge: order.status.charge };
+  if (statusKind(order.status) !== "Paid") return err("NotShippable");
+  order.status = { Shipped: statusCharge(order.status) };
   deps.store.orders.put(order);
   await deps.shipping.ship({ order: id, customer: order.customer });
   return ok(null);

@@ -16,7 +16,7 @@ node src/cli.ts survey examples/todo.nindub --terrain http://127.0.0.1:3000 --st
 | Map | Terrain |
 |---|---|
 | `region api: Service(ts)` | `src/api/todos.ts`(action と query)、`src/server.ts`(プロセス) |
-| `region store: Postgres` | `src/store/memory.ts` — **Postgres ではなくメモリ。下の Amendment を参照** |
+| `region store: Postgres` | `src/store/nindub.ts` — Nindub の store(D23)、メモリ backend。**Postgres ではない。下の Amendment を参照** |
 | `region directory: External`、`port Directory` | `src/domain.ts` の `Deps.directory`。本番のクライアントは `src/server.ts` |
 | `region mailer: Outbound`、`effect SendMail` | `Deps.mail`。Survey 下ではデータとして出力、本番ではログ |
 | `road sql -> store`、`road http -> directory`、`road mail -> mailer` | `Deps` の 3 つのフィールド |
@@ -42,3 +42,5 @@ Map は `region store: Postgres` と言う。この Terrain は行をメモリ�
 選択肢は(D18):**採用**(Map を `region store: Store` に変えて Remap)、**却下**(この Terrain が Postgres のストアを持つ)、**裁量**。
 
 **判断:裁量**(2026-09-28)。Map は `Postgres` のまま。本番で意図するストアを述べており、その意図は正しい。この例の Terrain はストアの代替品であり、ここにそう記す。Remap はしない。DB の計器ができたとき、`region store` を実現すると主張する Terrain は Postgres でなければならず、そうでなければ新たな Amendment を起こす。
+
+*D23(同日)の下では、代替品は Nindub の store のメモリ backend である。行は Map の形を持ち、Survey は `POST /__nindub/state` からそれを読む。判断はそのまま立つ。*

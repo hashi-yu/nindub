@@ -10,7 +10,7 @@ import * as ordersApi from "./api/orders.ts";
 import * as staffApi from "./api/staff.ts";
 import type { Deps, Result, ShopError } from "./domain.ts";
 import { type HarnessCall, handleCall } from "./harness.ts";
-import { MemoryStore } from "./store/memory.ts";
+import { openStore } from "./store/nindub.ts";
 
 const STATUS: Record<ShopError, number> = {
   NotFound: 404,
@@ -26,7 +26,7 @@ const STATUS: Record<ShopError, number> = {
 };
 
 export function startServer(port = 0): Promise<{ url: string; close: () => Promise<void> }> {
-  const store = new MemoryStore();
+  const store = openStore();
 
   // Production deps. This example has no payment provider, shipping or
   // mail service behind it, so payments are declined and the rest is
@@ -66,6 +66,7 @@ export function startServer(port = 0): Promise<{ url: string; close: () => Promi
         store.clear();
         return send(200, {});
       }
+      if (req.method === "POST" && url.pathname === "/__nindub/state") return send(200, store.state());
       const p = url.pathname.split("/").filter(Boolean);
       const m = req.method;
 

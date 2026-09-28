@@ -17,7 +17,7 @@ node src/cli.ts survey examples/shop.nindub --terrain http://127.0.0.1:3001 --st
 |---|---|
 | `region api::catalog`, `::cart`, `::orders`, `::staff` | `src/api/catalog.ts`, `cart.ts`, `orders.ts`, `staff.ts` |
 | `region api` (the process) | `src/server.ts`; the harness endpoints in `src/harness.ts` |
-| `region db: Postgres` | `src/store/memory.ts`, a stand-in as in the Todo Terrain (Amendment 1 there, ruled discretion) |
+| `region db: Postgres` | `src/store/nindub.ts`: Nindub's store (D23) with its in-memory backend, a stand-in as in the Todo Terrain (Amendment 1 there, ruled discretion). Survey reads it through `POST /__nindub/state` |
 | `port Payments` | `Deps.payments` |
 | `effect Ship`, `Receipt`, `Refunded` | `Deps.shipping`, `Deps.mail` |
 | `inject clock`, `ids` | `Deps.now`, `Deps.freshId` |

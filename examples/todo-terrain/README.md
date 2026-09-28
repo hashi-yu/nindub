@@ -16,7 +16,7 @@ node src/cli.ts survey examples/todo.nindub --terrain http://127.0.0.1:3000 --st
 | Map | Terrain |
 |---|---|
 | `region api: Service(ts)` | `src/api/todos.ts` (actions and queries), `src/server.ts` (the process) |
-| `region store: Postgres` | `src/store/memory.ts` — **in memory, not Postgres; see the Amendment below** |
+| `region store: Postgres` | `src/store/nindub.ts` — Nindub's store (D23), in-memory backend; **not Postgres, see the Amendment below** |
 | `region directory: External`, `port Directory` | `Deps.directory` in `src/domain.ts`; the production client in `src/server.ts` |
 | `region mailer: Outbound`, `effect SendMail` | `Deps.mail`; emitted as data under Survey, logged in production |
 | `road sql -> store`, `road http -> directory`, `road mail -> mailer` | the three fields of `Deps` |
@@ -42,3 +42,5 @@ The Map says `region store: Postgres`. This Terrain keeps rows in a `Map` in mem
 The options were (D18): **accept** (change the Map to `region store: Store` and Remap), **reject** (this Terrain must grow a Postgres store), or **discretion**.
 
 **Ruling: discretion** (2026-09-28). The Map keeps `Postgres`: it states the intended production store, and that intent is right. This example Terrain is a stand-in for the store, and says so here. No Remap. When the database instrument exists, a Terrain that claims to realize `region store` will have to be Postgres, or raise a new Amendment.
+
+*Under D23 (same day) the stand-in is Nindub's store with its in-memory backend, so the rows have the Map's shape and Survey reads them through `POST /__nindub/state`. The ruling stands.*

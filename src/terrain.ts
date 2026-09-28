@@ -3,9 +3,11 @@
 // The first instrument is the harness protocol: one HTTP endpoint on the
 // Terrain, `POST /__nindub/call`, that runs one action or query with the
 // injected values Survey supplies and reports what the Map would report:
-// the result, the effects emitted, the port requests made. See
-// docs/SURVEY.md. Instruments that drive a Terrain's real routes and
-// screens come later (D22).
+// the result, the effects emitted, the port requests made. A Terrain that
+// keeps its state in Nindub's store also answers `POST /__nindub/state`
+// with that state in the Map's shape (D23). See docs/SURVEY.md.
+// Instruments that drive a Terrain's real routes and screens come later
+// (D22).
 
 import * as http from "node:http";
 import type { AddressInfo } from "node:net";
@@ -38,6 +40,12 @@ export interface Terrain {
   call(c: TerrainCall): Promise<TerrainReply>;
   /** Return to the initial state. Survey calls this before a run. */
   reset?(): Promise<void>;
+  /**
+   * The declared state, in the Map's shape (D23): `{ todos: [ ...rows ] }`.
+   * Null when the Terrain does not offer it. Survey compares it with the
+   * Map's state after every step.
+   */
+  state?(): Promise<Record<string, unknown> | null>;
 }
 
 /** Encode a Map Observation as the reply a conforming Terrain would give. */
@@ -69,12 +77,23 @@ export function callOf(obs: Observation): TerrainCall {
 
 export class HttpTerrain implements Terrain {
   private readonly base: string;
+  private hasState = true;
   constructor(base: string) {
     this.base = base.replace(/\/$/, "");
   }
   async reset(): Promise<void> {
     const res = await fetch(`${this.base}/__nindub/reset`, { method: "POST" });
     if (!res.ok) throw new Error(`terrain answered ${res.status} to reset`);
+  }
+  async state(): Promise<Record<string, unknown> | null> {
+    if (!this.hasState) return null;
+    const res = await fetch(`${this.base}/__nindub/state`, { method: "POST" });
+    if (res.status === 404) {
+      this.hasState = false;
+      return null;
+    }
+    if (!res.ok) throw new Error(`terrain answered ${res.status} to state`);
+    return (await res.json()) as Record<string, unknown>;
   }
   async call(c: TerrainCall): Promise<TerrainReply> {
     const res = await fetch(`${this.base}/__nindub/call`, {
@@ -122,6 +141,12 @@ export class RuntimeTerrain implements Terrain {
 
   async reset(): Promise<void> {
     this.runtime = this.fresh();
+  }
+
+  async state(): Promise<Record<string, unknown>> {
+    const out: Record<string, unknown> = {};
+    for (const name of this.runtime.states()) out[name] = toJSON(this.runtime.getState(name));
+    return out;
   }
 
   private fresh(): Runtime {
@@ -172,6 +197,15 @@ export function serve(terrain: Terrain, port = 0): Promise<{ url: string; close:
     if (req.method === "POST" && req.url === "/__nindub/reset") {
       await terrain.reset?.();
       res.writeHead(200, { "content-type": "application/json" }).end("{}");
+      return;
+    }
+    if (req.method === "POST" && req.url === "/__nindub/state") {
+      const state = (await terrain.state?.()) ?? null;
+      if (state === null) {
+        res.writeHead(404).end();
+        return;
+      }
+      res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify(state));
       return;
     }
     if (req.method !== "POST" || req.url !== "/__nindub/call") {

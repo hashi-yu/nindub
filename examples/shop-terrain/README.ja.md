@@ -17,7 +17,7 @@ node src/cli.ts survey examples/shop.nindub --terrain http://127.0.0.1:3001 --st
 |---|---|
 | `region api::catalog`、`::cart`、`::orders`、`::staff` | `src/api/catalog.ts`、`cart.ts`、`orders.ts`、`staff.ts` |
 | `region api`(プロセス) | `src/server.ts`。ハーネスのエンドポイントは `src/harness.ts` |
-| `region db: Postgres` | `src/store/memory.ts`。Todo Terrain と同じ代替品(そちらの Amendment 1、裁量) |
+| `region db: Postgres` | `src/store/nindub.ts`:Nindub の store(D23)のメモリ backend。Todo Terrain と同じ代替品(そちらの Amendment 1、裁量)。Survey は `POST /__nindub/state` からこれを読む |
 | `port Payments` | `Deps.payments` |
 | `effect Ship`、`Receipt`、`Refunded` | `Deps.shipping`、`Deps.mail` |
 | `inject clock`、`ids` | `Deps.now`、`Deps.freshId` |

@@ -55,4 +55,6 @@ export interface TodoStore {
   all(): Todo[];
   /** Back to the initial state; the harness protocol's reset. */
   clear(): void;
+  /** Every state in the wire encoding: what `POST /__nindub/state` answers. */
+  state(): Record<string, unknown>;
 }

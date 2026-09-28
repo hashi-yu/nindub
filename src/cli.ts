@@ -4,7 +4,7 @@
 //   nindub outline <file.nindub> [--depth N]   the overview: regions, roads, signatures
 //   nindub parse   <file.nindub>               print the AST as JSON
 //   nindub run     <file.nindub>               run the Map alone; read calls from stdin
-//   nindub survey  <file.nindub> --terrain <url> [--seed N] [--steps N] [--script file] [--plan]
+//   nindub survey  <file.nindub> --terrain <url> [--seed N] [--steps N] [--script file] [--plan] [--no-state]
 //                                              compare the Map with a Terrain (docs/SURVEY.md)
 //   nindub serve   <file.nindub> [--port N]    serve the Map itself as a Terrain (for trying survey)
 
@@ -26,7 +26,7 @@ function usage(): never {
       "  nindub outline <file.nindub> [--depth N]",
       "  nindub parse   <file.nindub>",
       "  nindub run     <file.nindub>",
-      "  nindub survey  <file.nindub> --terrain <url> [--seed N] [--steps N] [--script file] [--plan]",
+      "  nindub survey  <file.nindub> --terrain <url> [--seed N] [--steps N] [--script file] [--plan] [--no-state]",
       "  nindub serve   <file.nindub> [--port N]",
       "",
     ].join("\n"),
@@ -133,7 +133,7 @@ async function run(file: string) {
 
 // Pull `--name value` options and `--flag` switches out of argv; the rest
 // are positionals.
-const FLAGS = new Set(["plan"]);
+const FLAGS = new Set(["plan", "no-state"]);
 const argv = process.argv.slice(2);
 const opts = new Map<string, string>();
 const flags = new Set<string>();
@@ -184,6 +184,7 @@ switch (command) {
       ...(intOpt("steps", 1) !== undefined ? { steps: intOpt("steps", 1)! } : {}),
       ...(scriptFile ? { script: readFileSync(scriptFile, "utf8") } : {}),
       ...(flags.has("plan") ? { plan: true } : {}),
+      ...(flags.has("no-state") ? { state: false } : {}),
     });
     process.stdout.write(formatReport(report, map.name, target));
     process.exit(report.drift || report.error ? 1 : 0);

@@ -11,12 +11,12 @@ import type { AddressInfo } from "node:net";
 import * as api from "./api/todos.ts";
 import type { Deps, Result, TodoError } from "./domain.ts";
 import { type HarnessCall, handleCall } from "./harness.ts";
-import { MemoryTodoStore } from "./store/memory.ts";
+import { NindubTodoStore } from "./store/nindub.ts";
 
 const STATUS: Record<TodoError, number> = { NotFound: 404, Forbidden: 403, InvalidTitle: 400 };
 
 export function startServer(port = 0): Promise<{ url: string; close: () => Promise<void> }> {
-  const store = new MemoryTodoStore();
+  const store = new NindubTodoStore();
 
   // Production deps: `road http -> directory` and `road mail -> mailer`
   // point at services this example does not have, so the directory is
@@ -48,6 +48,7 @@ export function startServer(port = 0): Promise<{ url: string; close: () => Promi
         store.clear();
         return send(200, {});
       }
+      if (req.method === "POST" && url.pathname === "/__nindub/state") return send(200, store.state());
       if (typeof user !== "string") return send(401, { error: "x-user header required" });
 
       const respond = <T>(r: Result<T, TodoError>) => (r.ok ? send(200, r.value) : send(STATUS[r.error], { error: r.error }));

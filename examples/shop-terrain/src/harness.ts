@@ -4,7 +4,7 @@ import * as cartApi from "./api/cart.ts";
 import * as catalog from "./api/catalog.ts";
 import * as ordersApi from "./api/orders.ts";
 import * as staffApi from "./api/staff.ts";
-import type { Deps, Order, PayError, Result, ShopError, Sku, Status, Store } from "./domain.ts";
+import type { Deps, Order, PayError, Result, ShopError, Sku, Store } from "./domain.ts";
 
 export interface HarnessCall {
   name: string;
@@ -138,22 +138,12 @@ async function dispatch(deps: Deps, name: string, a: unknown[]): Promise<unknown
 
 const encodeSku = (s: Sku) => ({ id: s.id, name: s.name, price: s.price, stock: s.stock });
 
-function encodeStatus(s: Status): unknown {
-  switch (s.kind) {
-    case "Paid":
-    case "Shipped":
-      return { [s.kind]: s.charge };
-    default:
-      return `Status::${s.kind}`;
-  }
-}
-
 const encodeOrder = (o: Order) => ({
   id: o.id,
   customer: o.customer,
   lines: o.lines.map((l) => ({ sku: l.sku, qty: l.qty, unit_price: l.unit_price })),
   total: o.total,
-  status: encodeStatus(o.status),
+  status: o.status, // already in the wire encoding (D23)
   placed_at: o.placed_at,
 });
 

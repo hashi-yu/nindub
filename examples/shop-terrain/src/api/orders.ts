@@ -1,6 +1,6 @@
 // region api::orders
 
-import { type Deps, type Order, type OrderId, type Result, type UserId, err, ok } from "../domain.ts";
+import { type Deps, type Order, type OrderId, type Result, type UserId, err, ok, statusCharge, statusKind } from "../domain.ts";
 
 /** @nindub action place at POST /orders */
 export async function place(deps: Deps, user: UserId): Promise<Result<OrderId>> {
@@ -27,7 +27,7 @@ export async function place(deps: Deps, user: UserId): Promise<Result<OrderId>> 
     customer: user,
     lines: cart.lines,
     total,
-    status: { kind: "Paid", charge: charge.value },
+    status: { Paid: charge.value },
     placed_at: deps.now(),
   };
   deps.store.orders.put(order);
@@ -42,14 +42,14 @@ export async function cancel(deps: Deps, user: UserId, id: OrderId): Promise<Res
   if (!order) return err("NotFound");
   if (order.customer !== user) return err("Forbidden");
 
-  switch (order.status.kind) {
+  switch (statusKind(order.status)) {
     case "Placed":
-      order.status = { kind: "Cancelled" };
+      order.status = "Status::Cancelled";
       break;
     case "Paid": {
-      const refund = await deps.payments.refund(order.status.charge);
+      const refund = await deps.payments.refund(statusCharge(order.status));
       if (!refund.ok) return err("RefundFailed");
-      order.status = { kind: "Refunded" };
+      order.status = "Status::Refunded";
       await deps.mail.refunded({ to: user, order: id, total: order.total });
       break;
     }

@@ -25,6 +25,7 @@ create("u1", "Buy milk")
 2. Survey runs the call on the Map. The Observation records the result, the effects emitted, the port requests made with the responses that were injected, and the clock and id values consumed.
 3. Survey sends the same call to the Terrain **with the same injected values**: the clock values, the ids, and the port responses, in order (D8). Spare port responses are added, so a Terrain that calls a port the Map did not can still finish.
 4. Survey compares three channels, in order: **result**, **effects**, **ports** (which port functions were called, with which arguments). The first difference is a Drift, and the run stops with the sequence that reproduces it.
+5. If the Terrain keeps its state in Nindub's store (below), Survey reads that state and compares it with the Map's: the **state** channel (D23). A Table is compared as a set of rows keyed by id; a Vec keeps its order. A divergence in state therefore shows at the step that caused it, whether or not anything reads it. `--no-state` turns this off.
 
 Views are not surveyed yet; that needs the browser instrument.
 
@@ -45,7 +46,7 @@ Planned reads are marked `*` in the report. When a Drift is found, the report al
     carts[u2] was last written at step 9
 ```
 
-Measured on the Shop before Amendment 2 (the Map moved a merged cart line to the end, the Terrain kept it in place), seeds 10 to 39: random generation found the Drift in 2 of 30 runs of 600 steps, planning in 16 of 30; with 1200 steps, 3 of 30 and 23 of 30. Planning spends roughly half its steps on reads. What it cannot do is reach state that no query with known arguments reads; that stays a limit of observing a Terrain from outside.
+Measured on the Shop before Amendment 2 (the Map moved a merged cart line to the end, the Terrain kept it in place), seeds 10 to 39: random generation found the Drift in 2 of 30 runs of 600 steps, planning in 19 of 30; with 1200 steps, 3 of 30 and 23 of 30. Without the state channel planning spends roughly half its steps on reads; with it, none, and the Drift shows at the `add_to_cart` step itself. Either way, reaching the state that hides a Drift is what limits the rate, not seeing it.
 
 ## The harness protocol
 
@@ -83,7 +84,27 @@ Reply:
 - `ports` are the requests the call made, in order.
 - If the Terrain could not complete the call (it ran out of injected values, or threw), reply with `"error": "..."` and whatever `ports` were requested. Survey reports it as Drift, not as a transport failure.
 
+`POST {terrain}/__nindub/state` — the declared state, in the Map's shape (D23):
+
+```json
+{ "todos": [{ "id": "id-1", "owner": "u1", "title": "Buy milk", "done": true, "created_at": 0 }] }
+```
+
+A Terrain that keeps its state in Nindub's store gets this for free (below). One that does not answers 404, and Survey compares observations only.
+
 `nindub serve examples/todo.nindub` serves the Map itself behind this protocol, which is the reference for what a conforming Terrain answers.
+
+## Nindub's store
+
+Under D23 the Map's `state` declarations are also the shape a Terrain stores that state in, and Nindub provides that shape as a store, so that the Terrain's author writes no code for Survey to read state through. In TypeScript:
+
+```ts
+import { NindubStore } from "nindub/src/store.ts";
+const store = new NindubStore(parse(readFileSync("shop.nindub", "utf8")));
+const carts = store.table<CartRow>("carts"); // get, has, put, delete, all, size
+```
+
+`put` accepts a row in the wire encoding and checks it against the declared row type; a row of the wrong shape is refused when it is written, not found later. `store.state()` is what `POST /__nindub/state` answers; `store.snapshot()` and `store.restore()` let an action roll back. The store fixes only the shape of declared state. Indexes, caches, denormalized copies and everything else about how a Terrain reaches its data remain its own. The store's first backend is in memory; a `Postgres` region will be read directly by the database instrument of D21 when it exists.
 
 ## Wire encoding
 
