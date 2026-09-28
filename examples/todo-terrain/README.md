@@ -39,8 +39,6 @@ What Survey found while this Terrain was being made to pass, in order.
 
 The Map says `region store: Postgres`. This Terrain keeps rows in a `Map` in memory. Survey over the harness protocol cannot see the difference (D22 states this limitation); the database instrument of D21, once it exists, would.
 
-Proposed change to the Map: none yet. The choice is the human's (D18):
+The options were (D18): **accept** (change the Map to `region store: Store` and Remap), **reject** (this Terrain must grow a Postgres store), or **discretion**.
 
-- **Accept**: change the Map to `region store: Store` (any store) and Remap; this Terrain conforms.
-- **Reject**: keep `Postgres`; this Terrain must grow a Postgres store before the database instrument arrives.
-- **Discretion**: keep `Postgres` in the Map as the intended production store, and record that the example Terrain is a stand-in.
+**Ruling: discretion** (2026-09-28). The Map keeps `Postgres`: it states the intended production store, and that intent is right. This example Terrain is a stand-in for the store, and says so here. No Remap. When the database instrument exists, a Terrain that claims to realize `region store` will have to be Postgres, or raise a new Amendment.
