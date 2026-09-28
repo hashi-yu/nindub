@@ -43,6 +43,7 @@ export function printSignature(item: ast.Item): string {
       return `effect ${item.name} { ${item.fields.map((f) => `${f.name}: ${printType(f.type)}`).join(", ")} }`;
     case "action":
     case "query":
+    case "fn":
       return `${item.kind} ${item.name}${printParams(item.params)} -> ${printType(item.returns)}`;
     case "view":
       return `view ${item.name}${printParams(item.params)}`;

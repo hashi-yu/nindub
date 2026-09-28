@@ -19,7 +19,7 @@ export type Value =
   | { t: "vec"; items: Value[] }
   | { t: "range"; start: bigint; end: bigint; inclusive: boolean }
   | { t: "closure"; params: ast.ClosureParam[]; body: ast.Expr; env: Env }
-  | { t: "fn"; name: string; kind: "action" | "query" | "view" | "builtin" }
+  | { t: "fn"; name: string; kind: "action" | "query" | "view" | "fn" | "builtin" }
   | { t: "variantCtor"; name: string; variant: string }
   | { t: "injected"; name: string; type: string }
   | { t: "port"; name: string }

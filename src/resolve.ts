@@ -53,7 +53,7 @@ const PLACEMENT: Record<string, Set<string>> = {
   External: new Set(["port"]),
   Outbound: new Set(["effect"]),
 };
-const ANYWHERE = new Set(["type", "opaque", "struct", "enum", "inject"]);
+const ANYWHERE = new Set(["type", "opaque", "struct", "enum", "inject", "fn"]);
 
 // Items are keyed by name; invariants, which have none, by description.
 export function itemKey(item: Leaf): string {
@@ -112,8 +112,14 @@ export function resolve(map: ast.MapDecl): ResolvedMap {
       if (inner.kind === "region" || inner.kind === "impl") {
         throw new ResolveError(`an impl block cannot contain a ${inner.kind}`, inner.span);
       }
-      if (!hasBody(inner)) throw new ResolveError(`only actions, queries, views and invariants go in impl blocks`, inner.span);
+      if (!hasBody(inner)) throw new ResolveError(`only actions, queries, views, fns and invariants go in impl blocks`, inner.span);
       const key = itemKey(inner);
+      if (inner.kind === "fn" && !declared.has(key)) {
+        // A helper the region did not announce: private to the impl.
+        if (inner.body === null) throw new ResolveError(`fn ${key} has no body`, inner.span);
+        declare(inner, region);
+        continue;
+      }
       const decl = declared.get(key);
       if (!decl) throw new ResolveError(`${key} is not declared in region ${region.path.join("::")}`, inner.span);
       if (decl.region !== region) {
@@ -170,14 +176,21 @@ export function resolve(map: ast.MapDecl): ResolvedMap {
   return resolved;
 }
 
-function hasBody(item: Leaf): item is ast.Action | ast.Query | ast.View | ast.Invariant {
-  return item.kind === "action" || item.kind === "query" || item.kind === "view" || item.kind === "invariant";
+function hasBody(item: Leaf): item is ast.Action | ast.Query | ast.View | ast.Fn | ast.Invariant {
+  return (
+    item.kind === "action" ||
+    item.kind === "query" ||
+    item.kind === "view" ||
+    item.kind === "fn" ||
+    item.kind === "invariant"
+  );
 }
 
 function signature(item: Leaf): string {
   switch (item.kind) {
     case "action":
     case "query":
+    case "fn":
       return `${printParams(item.params)} -> ${printType(item.returns)}`;
     case "view":
       return printParams(item.params);
@@ -206,7 +219,7 @@ function connected(from: ResolvedRegion, to: ResolvedRegion, byPath: Map<string,
 // Single-segment names used in an item's body that are not bound locally.
 // These are the item's references to other items (state, actions, ports,
 // effects, views...). Locals shadow items, as in the interpreter.
-function freeNames(item: ast.Action | ast.Query | ast.View | ast.Invariant): { name: string; span: ast.Span }[] {
+function freeNames(item: ast.Action | ast.Query | ast.View | ast.Fn | ast.Invariant): { name: string; span: ast.Span }[] {
   const out: { name: string; span: ast.Span }[] = [];
   const bound: Set<string>[] = [new Set("params" in item ? item.params.map((p) => p.name) : [])];
   const isBound = (n: string) => bound.some((s) => s.has(n));

@@ -121,7 +121,7 @@ async function run(file: string) {
         }
       }
     } catch (e) {
-      if (e instanceof RuntimeError || e instanceof ParseError || e instanceof LexError) {
+      if (e instanceof RuntimeError || e instanceof ParseError || e instanceof LexError || e instanceof TypeError) {
         out(`error: ${e.message}`);
       } else {
         throw e;

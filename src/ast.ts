@@ -31,8 +31,20 @@ export type Item =
   | Action
   | Query
   | View
+  | Fn
   | Region
   | Impl;
+
+// `fn name(args) -> T { ... }` — a pure helper. Callable from bodies in
+// any region, never from outside, and observed by nothing: it may not
+// change state, emit, call ports or call actions.
+export interface Fn extends ItemBase {
+  kind: "fn";
+  name: string;
+  params: Param[];
+  returns: Type;
+  body: Block | null;
+}
 
 // `region api: Service(ts) { road sql -> store; ... }` — a bounded part of
 // the territory (D21). Items declared inside it live there. Its kind
@@ -233,6 +245,7 @@ export type Expr =
   | IntLit
   | StringLit
   | BoolLit
+  | VecLit
   | Path
   | StructLit
   | Call
@@ -251,6 +264,12 @@ export type Expr =
 // `()`
 export interface UnitLit extends Node {
   kind: "unit";
+}
+
+// `[a, b, c]`
+export interface VecLit extends Node {
+  kind: "vec";
+  items: Expr[];
 }
 
 export interface IntLit extends Node {
