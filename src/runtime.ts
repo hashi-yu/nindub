@@ -7,6 +7,7 @@
 // Runtime (D8), so two Runtimes given the same inputs behave identically.
 
 import type * as ast from "./ast.ts";
+import { resolve, type ResolvedItem, type ResolvedMap } from "./resolve.ts";
 import {
   type Element,
   type Env,
@@ -93,7 +94,8 @@ interface Frame {
 
 export class Runtime {
   readonly map: ast.MapDecl;
-  private readonly items = new Map<string, ast.Item>();
+  readonly resolved: ResolvedMap;
+  private readonly items = new Map<string, ResolvedItem>();
   private readonly enums = new Map<string, ast.Enum>();
   private readonly structs = new Map<string, ast.Struct>();
   private readonly effects = new Map<string, ast.Effect>();
@@ -114,11 +116,9 @@ export class Runtime {
           throw new RuntimeError(`no response injected for ${port}.${fn}`);
         }),
     };
-    for (const item of map.items) {
-      if ("name" in item) {
-        if (this.items.has(item.name)) throw new RuntimeError(`duplicate item ${item.name}`, item.span);
-        this.items.set(item.name, item);
-      }
+    this.resolved = resolve(map);
+    for (const item of this.resolved.items) {
+      if ("name" in item) this.items.set(item.name, item);
       if (item.kind === "enum") this.enums.set(item.name, item);
       if (item.kind === "struct") this.structs.set(item.name, item);
       if (item.kind === "effect") this.effects.set(item.name, item);
@@ -145,7 +145,7 @@ export class Runtime {
   /** Names of actions, queries and views, for tooling. */
   callables(): { name: string; kind: "action" | "query" | "view"; params: ast.Param[] }[] {
     const out: { name: string; kind: "action" | "query" | "view"; params: ast.Param[] }[] = [];
-    for (const item of this.map.items) {
+    for (const item of this.resolved.items) {
       if (item.kind === "action" || item.kind === "query" || item.kind === "view") {
         out.push({ name: item.name, kind: item.kind, params: item.params });
       }
@@ -226,8 +226,13 @@ export class Runtime {
     for (const [k, v] of snapshot) this.state.set(k, v);
   }
 
+  /** Names of state cells, for tooling. */
+  states(): string[] {
+    return [...this.state.keys()];
+  }
+
   private checkInvariants() {
-    for (const item of this.map.items) {
+    for (const item of this.resolved.items) {
       if (item.kind !== "invariant") continue;
       const v = this.evalBody(item.body, this.rootEnv());
       if (!truthy(v)) throw new InvariantViolation(item.description, item.span);

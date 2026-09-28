@@ -24,11 +24,14 @@ const ITEM_KEYWORDS = new Set([
   "action",
   "query",
   "view",
+  "region",
+  "impl",
 ]);
 
 const RESERVED = new Set([
   ...ITEM_KEYWORDS,
   "map",
+  "road",
   "fn",
   "let",
   "else",
@@ -163,8 +166,7 @@ class Parser {
     return doc;
   }
 
-  private parseItem(): ast.Item {
-    const doc = this.parseDoc();
+  private parseItem(doc: string[] = this.parseDoc()): ast.Item {
     const start = this.start();
     const t = this.peek();
     if (t.kind !== "ident" || !ITEM_KEYWORDS.has(t.text)) {
@@ -207,8 +209,54 @@ class Parser {
         const d = this.peek();
         if (d.kind !== "string") this.fail("expected invariant description string");
         this.next();
-        const body = this.parseBlock();
+        const body = this.parseOptionalBody();
         return { kind: "invariant", description: d.text, body, ...base(this.spanFrom(start)) };
+      }
+      case "region": {
+        const name = this.expectIdent("region name");
+        let regionKind: ast.RegionKind | null = null;
+        if (this.eat(":")) {
+          const kstart = this.start();
+          const kname = this.expectIdent("region kind");
+          const args: string[] = [];
+          if (this.eat("(")) {
+            while (!this.at(")")) {
+              args.push(this.expectIdent("region kind argument"));
+              if (!this.eat(",")) break;
+            }
+            this.expect(")");
+          }
+          regionKind = { name: kname, args, span: this.spanFrom(kstart) };
+        }
+        this.expect("{");
+        const roads: ast.Road[] = [];
+        const items: ast.Item[] = [];
+        while (!this.at("}")) {
+          const innerDoc = this.parseDoc();
+          if (this.atKeyword("road")) {
+            const rstart = this.start();
+            this.next();
+            const rname = this.expectIdent("road name");
+            this.expect("->");
+            const to = [this.expectIdent("region")];
+            while (this.eat("::")) to.push(this.expectIdent("region"));
+            this.expect(";");
+            roads.push({ name: rname, to, span: this.spanFrom(rstart) });
+          } else {
+            items.push(this.parseItem(innerDoc));
+          }
+        }
+        this.expect("}");
+        return { kind: "region", name, regionKind, roads, items, ...base(this.spanFrom(start)) };
+      }
+      case "impl": {
+        const path = [this.expectIdent("region")];
+        while (this.eat("::")) path.push(this.expectIdent("region"));
+        this.expect("{");
+        const items: ast.Item[] = [];
+        while (!this.at("}")) items.push(this.parseItem());
+        this.expect("}");
+        return { kind: "impl", path, items, ...base(this.spanFrom(start)) };
       }
       case "port": {
         const name = this.expectIdent("port name");
@@ -238,18 +286,25 @@ class Parser {
         const params = this.parseParams();
         this.expect("->");
         const returns = this.parseType();
-        const body = this.parseBlock();
+        const body = this.parseOptionalBody();
         return { kind: t.text, name, params, returns, body, ...base(this.spanFrom(start)) };
       }
       case "view": {
         const name = this.expectIdent("view name");
         const params = this.parseParams();
-        const body = this.parseBlock();
+        const body = this.parseOptionalBody();
         return { kind: "view", name, params, body, ...base(this.spanFrom(start)) };
       }
       default:
         return this.fail("unreachable");
     }
+  }
+
+  // `{ body }` defines; `;` only declares (the body comes in an `impl`).
+  private parseOptionalBody(): ast.Block | null {
+    if (this.at("{")) return this.parseBlock();
+    this.expect(";");
+    return null;
   }
 
   private parseFields(): ast.Field[] {
