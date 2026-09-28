@@ -29,11 +29,13 @@ From Jean Baudrillard's *Simulacra and Simulation*. It inverts Alfred Korzybski'
 |---|---|
 | **Map** | A single file, written in Nindub, that describes all of a project's observable behavior. It is executable and it is the source of truth. |
 | **Terrain** | The implementation beneath the Map (TypeScript, Rust, Python, and so on). AI generates it, and humans do not read it to learn what it does. |
-| **Pin** | An annotation in the Terrain naming the Map element it realizes and the transport (function call, HTTP, browser) through which that element is observed. Pins point from the Terrain to the Map, never the other way; the Map file contains none. The tool collects them into a generated index. |
+| **Region** | A bounded part of the territory: a browser, a process, a database, an external service, an outbound channel. Every action, query, view, state, port and effect lives in one. A region's kind (`Client`, `Service`, `Postgres`, `External`, `Outbound`) decides what may live in it and which instrument Survey observes it with. Regions nest. |
+| **Road** | A declared connection from one region to another. A body may use an item from another region only along a road. Roads are the Map's statement of module dependencies, checked on the Terrain. |
+| **Pin** | An annotation in the Terrain naming the Map element it realizes, with any instrument-specific detail (an action's route). Pins point from the Terrain to the Map, never the other way; the Map file contains none. The tool collects them into a generated index. |
 | **Amendment** | A proposed change to the Map, submitted by AI during Realize with a reason and the Survey result against the unamended Map. A human accepts it, rejects it, or rules it discretion. An accepted Amendment is applied by a Remap. |
 | **Remap** | Applying one accepted Amendment to the Map: the only way the Map changes, and the only gate through which the Terrain informs the Map. Always a partial correction; never a regeneration of the Map from the Terrain. Amendment is to Remap as a pull request is to a merge. |
-| **Zoom** | Following a Pin to look at the level below. |
-| **Scale** | How deep a Zoom goes. Each element of the Map is either broken down further in Nindub or Pinned to the Terrain. |
+| **Zoom** | Going down a level: from the territory into a region, from a region into its items, from an item along its Pin into the Terrain. |
+| **Scale** | How deep a Zoom goes. The top of a Map shows regions and roads; below that, each region's items; below that, bodies; below that, the Terrain. `nindub outline --depth N` picks a Scale. |
 | **Observation** | Anything that comes out of the Map or the Terrain in response to inputs. There are four channels: results, views, effects and ports. Survey compares observations, never internal state. |
 | **Action** | An operation that may change state. Its result and declared errors are observed. |
 | **Query** | An operation that reads state without changing it. Its result is observed. |

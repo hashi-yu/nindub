@@ -1,18 +1,21 @@
 #!/usr/bin/env node
 // nindub command line.
 //
-//   nindub parse <file.nindub>   print the AST as JSON
-//   nindub run   <file.nindub>   run the Map alone; read calls from stdin
+//   nindub outline <file.nindub> [--depth N]   the overview: regions, roads, signatures
+//   nindub parse   <file.nindub>               print the AST as JSON
+//   nindub run     <file.nindub>               run the Map alone; read calls from stdin
 
 import { readFileSync } from "node:fs";
 import { createInterface } from "node:readline";
 import { LexError } from "./lexer.ts";
+import { outline } from "./outline.ts";
 import { parse, parseExpr, ParseError } from "./parser.ts";
+import { resolve, ResolveError } from "./resolve.ts";
 import { Runtime, RuntimeError } from "./runtime.ts";
 import { toJSON, type Value } from "./values.ts";
 
 function usage(): never {
-  process.stderr.write("usage: nindub (parse | run) <file.nindub>\n");
+  process.stderr.write("usage: nindub (outline [--depth N] | parse | run) <file.nindub>\n");
   process.exit(2);
 }
 
@@ -21,9 +24,11 @@ const show = (v: unknown) => JSON.stringify(v, jsonReplacer, 2);
 
 function loadMap(file: string) {
   try {
-    return parse(readFileSync(file, "utf8"));
+    const map = parse(readFileSync(file, "utf8"));
+    resolve(map); // structural checks; the result is rebuilt by Runtime
+    return map;
   } catch (e) {
-    if (e instanceof ParseError || e instanceof LexError) {
+    if (e instanceof ParseError || e instanceof LexError || e instanceof ResolveError) {
       process.stderr.write(`${file}:${e.message}\n`);
       process.exit(1);
     }
@@ -69,7 +74,7 @@ async function run(file: string) {
         out(HELP);
       } else if (line === ":state") {
         const state: Record<string, unknown> = {};
-        for (const item of map.items) if (item.kind === "state") state[item.name] = toJSON(rt.getState(item.name));
+        for (const name of rt.states()) state[name] = toJSON(rt.getState(name));
         out(show(state));
       } else if (line === ":calls") {
         for (const c of rt.callables()) {
@@ -111,9 +116,21 @@ async function run(file: string) {
   }
 }
 
-const [command, file] = process.argv.slice(2);
+const argv = process.argv.slice(2);
+const command = argv[0];
+let depth: number | undefined;
+const depthAt = argv.indexOf("--depth");
+if (depthAt !== -1) {
+  depth = Number(argv[depthAt + 1]);
+  if (!Number.isInteger(depth) || depth < 1) usage();
+  argv.splice(depthAt, 2);
+}
+const file = argv[1];
 if (!file) usage();
 switch (command) {
+  case "outline":
+    process.stdout.write(outline(loadMap(file), depth === undefined ? {} : { depth }));
+    break;
   case "parse":
     process.stdout.write(show(loadMap(file)) + "\n");
     break;

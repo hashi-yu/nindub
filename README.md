@@ -19,8 +19,9 @@ The tool is written in TypeScript and runs on Node 22.18 or later with no build 
 ```sh
 npm install
 npm run check                                  # typecheck + tests
-node src/cli.ts parse examples/todo.nindub     # print a Map's AST as JSON
+node src/cli.ts outline examples/todo.nindub   # the territory: regions, roads, signatures
 node src/cli.ts run examples/todo.nindub       # run the Map alone; type :help
+node src/cli.ts parse examples/todo.nindub     # print a Map's AST as JSON
 ```
 
 ## Documentation

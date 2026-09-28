@@ -19,8 +19,9 @@
 ```sh
 npm install
 npm run check                                  # 型検査とテスト
-node src/cli.ts parse examples/todo.nindub     # Map の AST を JSON で表示
+node src/cli.ts outline examples/todo.nindub   # 領土の俯瞰:region、road、署名
 node src/cli.ts run examples/todo.nindub       # Map を単体で動かす。:help でコマンド一覧
+node src/cli.ts parse examples/todo.nindub     # Map の AST を JSON で表示
 ```
 
 ## 文書について

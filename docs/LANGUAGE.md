@@ -2,17 +2,62 @@
 
 English | [日本語](LANGUAGE.ja.md)
 
-**Status: draft.** The syntax is decided by example, and the current example is [`examples/todo.nindub`](../examples/todo.nindub). This document explains what is in that file. Nothing here is implemented yet.
+**Status: draft.** The syntax is decided by example, and the current example is [`examples/todo.nindub`](../examples/todo.nindub). This document explains what is in that file. The parser, the interpreter (`nindub run`) and the outline (`nindub outline`) exist; Survey does not yet.
 
 ## Flavor
 
 Nindub reads like Rust: `struct`, `enum`, `fn`, `let`, `match`, `Result<T, E>`, closures, `//` comments. The resemblance is deliberate (see [D16](DESIGN.md#d16-the-syntax-is-rust-flavored)). What differs is the top-level vocabulary: a Map is not made of functions and modules but of the constructs below, each of which corresponds to something Survey can observe.
+
+## Territory: regions and roads
+
+A Map reads top-down. The top of the file is the **territory**: which regions exist, what lives in each, and what talks to what. Bodies come last, in `impl` blocks, so that the first screen of the file is the whole project at a glance (D21).
+
+```rust
+region api: Service(ts) {
+    road sql  -> store;
+    road http -> directory;
+
+    action create(user: UserId, title: Text) -> Result<TodoId, Error>;
+    query  list(user: UserId)                -> Vec<Todo>;
+}
+
+region store: Postgres {
+    state todos: Table<Todo>;
+    invariant "ids are unique";
+}
+
+impl api {
+    action create(user: UserId, title: Text) -> Result<TodoId, Error> { ... }
+    query  list(user: UserId) -> Vec<Todo> { ... }
+}
+```
+
+- A **region** is a bounded part of the territory: a browser, a process, a database, an external service, an outbound channel. Items declared inside it live there. Regions nest (`region api { region todos { ... } }`, `impl api::todos { ... }`).
+- A region's **kind** decides what may live in it and which instrument Survey observes it with:
+
+  | Kind | May contain | Instrument |
+  |---|---|---|
+  | `Client` | `view` | browser (accessibility tree) |
+  | `Service(lang)` | `action`, `query` | HTTP client |
+  | `Postgres`, `Store` | `state`, `invariant` | database reader |
+  | `External` | `port` | network boundary: requests captured, responses injected |
+  | `Outbound` | `effect` | outbound boundary: effects captured, never performed |
+
+  Types and `inject` may live anywhere, including outside any region. A region with no kind accepts anything and is observed by nothing in particular.
+- A **road** `road name -> region;` declares that the enclosing region may reach the target. A body that uses an item from another region must have a road there (or the two regions must contain one another); otherwise resolution fails. Roads are how module dependencies are stated, and checked, in the Map.
+- An item declared with a signature only (`action create(...) -> ...;`) must be defined exactly once in an `impl` of its region, with the same signature. A small Map may skip `impl` and write bodies inline.
+- Item names are global; regions group items, they do not namespace them.
+
+`nindub outline file.nindub` prints the territory without bodies; `--depth 1` prints regions and roads only. It is derived, so it is available even when a Map inlines its bodies.
 
 ## Top-level constructs
 
 | Construct | What it declares | What Survey observes |
 |---|---|---|
 | `map Name;` | The Map's name. One per file. | — |
+| `region name: Kind(args) { roads; items }` | A bounded part of the territory and what lives in it. | Through the instrument its kind names |
+| `road name -> region;` | That the enclosing region may reach another. | As a dependency constraint on the Terrain |
+| `impl region { items }` | Bodies for items the region declared. | — |
 | `struct`, `enum`, `type`, `opaque` | Types. `opaque` names a type whose contents the Map never sees (users from an external directory). | — |
 | `inject name: Kind;` | A source of nondeterminism the Map needs: `Clock`, `IdSource`, `Random`. Supplied by Survey to both sides (D8). | The values supplied |
 | `state name: Type;` | State the Map keeps. Must be reachable from some query or view (D9). | Never directly (D6) |
@@ -78,14 +123,14 @@ The Map never names a file, a route or a framework. Where an element is realized
 
 ```ts
 // src/api/todos.ts
-/** @nindub action create via http POST /todos */
+/** @nindub action create at POST /todos */
 export async function create(user: UserId, title: string) { ... }
 ```
 
 - The annotation names the Map element the code realizes.
-- `via` names the transport through which Survey observes it: `http ...` for actions and queries, `browser ...` for views. State is never observed; ports and effects are observed at the boundary they cross.
+- Which instrument observes the element follows from the kind of the region it lives in (D21), not from the Pin. The Pin may add instrument-specific detail, such as an action's route or a view's URL.
 
-The Nindub tool collects Pins into a generated index next to the Map (`todo.pins`, committed like a lockfile). Zoom reads the index; a viewer shows Pins overlaid on the Map. Projection is generated from the element's signature in the Map and the transport in its Pin (D7).
+The Nindub tool collects Pins into a generated index next to the Map (`todo.pins`, committed like a lockfile). Zoom reads the index; a viewer shows Pins overlaid on the Map. Projection is generated from the element's signature in the Map, its region's kind, and the detail in its Pin (D7).
 
 ## Amendments
 

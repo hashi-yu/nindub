@@ -42,6 +42,8 @@ A project is one Map file. Each element of the Map is either broken down further
 
 Observable behavior belongs in the Map. Anything unobservable is the Terrain's discretion: data structures, choice of database, libraries, frameworks, optimizations.
 
+*Generalized by D20: "observable" means checkable by some instrument, not only visible to a user. The database, the framework and the module structure can be observed with the right instrument, and a Map may claim them (D21).*
+
 For user interfaces the line is drawn the same way. What each screen shows and what happens when the user acts on it is observable and belongs in the Map. Color, layout, typography, animation and the UI framework are the Terrain's discretion, exactly as the choice of database is. Humans judge appearance by looking; Survey judges behavior.
 
 ### D6. Survey compares observations, never state
@@ -62,6 +64,8 @@ To make this possible, the Map has first-class constructs for each channel: `act
 ### D7. Projection is mechanical
 
 Projection is the adapter through which Survey drives and observes the Terrain. It is generated from the Map's declarations (the signatures of actions, queries, views, effects and ports) plus the transport named by the Pin (function call, HTTP, browser). No human and no AI writes it by hand.
+
+*Amended by D21: the transport follows from the kind of the region an element lives in; the Pin adds only instrument-specific detail such as a route.*
 
 **Rejected:** a hand-written or AI-written mapping from the Terrain's state to the Map's state. If AI writes the Projection, AI can write a Projection that makes Survey pass. That is the same hole as an agent editing the tests to make them pass. Comparing observations instead of state (D6) is what removes the need for a hand-written Projection.
 
@@ -142,6 +146,38 @@ The parser, interpreter and Survey harness are TypeScript, run directly by Node'
 Reasons: the fastest route to a working loop, which is the project's main risk; Playwright is native to the ecosystem, and the browser accessibility tree is the candidate Projection for views; the first Terrain is TypeScript too, so the HTTP adapters share a language; and AI reads and writes TypeScript reliably.
 
 **Rejected:** Rust. It matches the surface syntax and ships a single binary, but neither helps the interpreter exist sooner, and browser automation would go through a separate process. If performance or distribution ever matter, the interpreter's semantics will by then be pinned by tests, and a rewrite is safe.
+
+### D20. The Map may say anything an instrument can check
+
+The Surface rule (D5) limited the Map to what a user can observe. That made the Map a specification of behavior and nothing else: it could not say where data is stored, how the API looks, or how the project is structured, and so it looked like a spec with an interpreter attached.
+
+The rule is generalized: **the Map may state anything that some instrument can check mechanically, and anything the Map does not state is the Terrain's discretion.** Observers other than the user count: an HTTP client, a database reader, an import-graph analyzer, a benchmark, a log sink. Each is an instrument, and each is a Projection channel.
+
+| Concern | Instrument | How it appears in the Map |
+|---|---|---|
+| HTTP shape, authentication | HTTP client | region kind `Service`; routes in Pins, later in the Map |
+| Persistence | database reader | region kind `Postgres`, `state` with its columns |
+| External calls | network boundary | region kind `External`, `port` |
+| Module structure | import-graph analysis | regions and roads |
+| Language and framework | package manifest | region kind arguments, `Service(ts)` |
+| Performance | benchmark | budgets (not yet designed) |
+| Logging | log sink | effects |
+
+What separates a Map from a spec is therefore not its content but its checkability: a spec may say "clean architecture"; a Map may say "region api has no road to region ui", and Survey checks it. Statements no instrument can check (naming taste, "readable") stay outside the Map, in agent instructions such as `CLAUDE.md`.
+
+**Rejected:** keeping the Map to user-observable behavior. It is principled, but it leaves the whole "how" to the Terrain, which is exactly what a human who owns a project wants a say in, and it makes the Map indistinguishable from an executable spec.
+
+### D21. Regions and roads: the territory at the top, the detail below
+
+A Map is structured as a territory of **regions** connected by **roads**, with bodies in `impl` blocks after the overview.
+
+- A region is a bounded part of the territory: a browser, a process, a database, an external service, an outbound channel. Every action, query, view, state, invariant, port and effect lives in one. Regions nest.
+- A region's kind (`Client`, `Service(lang)`, `Postgres`/`Store`, `External`, `Outbound`) decides which items may live in it and which instrument Survey observes it with. This replaces the `via` transport in Pins (D7): the instrument follows from the region, the Pin adds only detail such as a route.
+- A road `road name -> region;` declares that the enclosing region may reach another. A body that uses an item from another region must have a road there; resolution fails otherwise. On the Terrain, roads become import-graph constraints. This is how module dependencies are stated in the Map and checked (D20).
+- The top of the file declares regions, roads and signatures; bodies follow in `impl region { ... }` blocks, and the tool checks that each declaration has exactly one body with the same signature. `nindub outline` derives the overview at any Scale, so a Map that inlines its bodies still has one.
+- Item names remain global; regions group, they do not namespace. A Map with no regions is a single unnamed region with no kind, and none of the checks above apply.
+
+**Rejected:** a flat list of items (the first draft). It is a dictionary, not a map: it says what exists but not where anything is or what talks to what, and a reader must read everything to see anything. Also rejected: making the overview a tool-only rendering. The file itself must read top-down, because the file is what humans and AI read. Also rejected: regions as namespaces. Global names keep bodies and Pins simple, and the Todo Map showed no need.
 
 ## Consequences worth noting
 
