@@ -63,6 +63,14 @@ export function parse(source: string): ast.MapDecl {
   return new Parser(lex(source)).parseMap();
 }
 
+/** Parse a single expression (REPL input). */
+export function parseExpr(source: string): ast.Expr {
+  const p = new Parser(lex(source));
+  const e = p.parseExpr();
+  p.expectEnd();
+  return e;
+}
+
 class Parser {
   private i = 0;
   // While parsing the head of `if`, `match` or `for ... in`, a `{` starts
@@ -114,6 +122,10 @@ class Parser {
     if (t.kind !== "ident") this.fail(`expected ${what}`);
     if (RESERVED.has(t.text)) this.fail(`\`${t.text}\` is a keyword and cannot be used as ${what}`);
     return this.next().text;
+  }
+
+  expectEnd(): void {
+    if (this.peek().kind !== "eof") this.fail("expected end of input");
   }
 
   private fail(message: string): never {

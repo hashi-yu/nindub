@@ -159,7 +159,7 @@ Amendment を起こすのは Drift だけである。Survey が検出しない T
 ## ロードマップ
 
 1. ~~`examples/todo.nindub` を書く。一覧画面、詳細画面、完了時の通知メールを含め、view・effect・port を使う例にする。ドメインの中核だけの例にはしない。~~ 完了(草案)。
-2. インタプリタを書き、Map 単体で動かす。
+2. ~~インタプリタを書き、Map 単体で動かす。~~ 完了:`nindub run`(動的。型検査はまだない)。
 3. Survey ハーネスを書く。入力生成、機械的な Projection、比較。
 4. AI に TypeScript の Terrain を Realize させ、Survey が通るまで回す。
 5. その後、Todo アプリでないものを試す。

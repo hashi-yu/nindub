@@ -46,6 +46,32 @@ view の本体は要素の列である。各要素は内容か操作のどちら
 
 制御構文(`if`、`for`、`match`)は普通に使える。view は query を呼べるが、action を直接呼ぶことはできない。action には操作を通してしか到達できないので、ユーザーにできることは view が宣言したものと正確に一致する。
 
+## Map を単体で動かす
+
+インタプリタは Terrain なしで Map を動かす。action・query・view への呼び出しはすべて **Observation** を返す。結果、出力された effect、port へのリクエストと注入された応答。
+
+```
+$ node src/cli.ts run examples/todo.nindub
+> :port Directory.email_of Ok("alice@example.com")
+> create("alice", "Buy milk")
+{ "action": "create", "result": { "Ok": "id-1" } }
+> complete("alice", "id-1")
+{ "action": "complete", "result": { "Ok": null },
+  "effects": [{ "to": "alice@example.com", "subject": "Done: Buy milk", "body": "You completed \"Buy milk\"." }],
+  "ports": [{ "Directory.email_of": ["alice"], "response": { "Ok": "alice@example.com" } }] }
+> List("alice")
+```
+
+REPL では文字列リテラルが id の代わりになる。id と時刻は決定的にカウントアップする注入源から来る。port の応答は `:port` で設定したものになる。
+
+### 知っておくべき意味論
+
+- **action は原子的である。** `Err` を返した場合、その action が行った状態変更と effect はすべて破棄される。不変条件は成功した action のたびに検査され、違反は action 自身の結果とは別に Map のバグとして報告される。
+- **ローカル変数はスナップショットである。** `let todo = todos.get(id)` はコピーであり、その後の `todos[id].done = true` は `todo` を変えない。変更できるのは `state` だけで、state 名を根とする場所への代入か、state の Table への `insert`/`remove` を通してのみ変わる。
+- **query は action を呼べない。** action は他の action を呼べる。その effect と port リクエストは呼び出し側の Observation に畳み込まれる。
+- **view の中の action 呼び出しは操作(affordance)である。** `button("Done", complete(user, id))` は、ボタンがその引数で `complete` を呼ぶことを記録するだけで、何も実行しない。view の中の query 呼び出しは実行される。したがって view の描画は状態を変えず、effect も出さない。
+- **`let x = e else err;`** は `Some`/`Ok` を剥がすか、囲んでいる action か query から `Err(err)` を返す。`requires c else err;` は `c` が偽なら `Err(err)` を返す。
+
 ## Pin は Terrain にあり、Map にはない
 
 Map はファイル名、ルート、フレームワークを一切書かない。要素がどこで実現されるかは Terrain の裁量であり(D5)、Terrain が整理し直されたからといって Map が変わってはならない(D17)。したがって Pin は Terrain から Map を指す。逆ではない。
