@@ -101,6 +101,12 @@ Survey は model-based testing である。入力列を生成し、Drift を探�
 - すべての文書は英語(`NAME.md`)と日本語(`NAME.ja.md`)で書き、同じコミットで揃える。
 - Map の拡張子は `.nindub`(`.gd` は GDScript が使っている)。
 
+### D16. 構文は Rust 風にする
+
+Nindub は Rust の見た目を借りる。`struct`、`enum`、`Result<T, E>`、`match`、`let ... else`、クロージャ、`#[属性]`。トップレベルの語彙は Nindub 独自のもの(`state`、`action`、`query`、`view`、`effect`、`port`、`inject`、`invariant`)。Pin は紐付ける要素に付ける属性にする。最初の例は `examples/todo.nindub`、構文の説明は `docs/LANGUAGE.md`。
+
+**却下:** TypeScript 風(緩すぎる。エラーと不在が第一級でない)、Elm 風(多くの読者と AI に馴染みがない)、独自構文(新しい構文に使う時間はインタプリタに使えない時間であり、AI は Rust をよく読める)。
+
 ## 注目すべき帰結
 
 - Map の action・query・view が、そのままプロジェクトの公開インターフェースになる。別に API 定義を書く必要はなく、Map から導かれる。
@@ -109,7 +115,7 @@ Survey は model-based testing である。入力列を生成し、Drift を探�
 
 ## 未解決の問題
 
-- **構文。** まだ何も決まっていない。最初の例(`examples/todo.nindub`)が決める。
+- **構文。** Rust 風(D16)で、`examples/todo.nindub` に草案がある。特に view の語彙は、何かが描画するようになれば変わる。
 - **規模。** Todo アプリは1つの Map に収まる。認証つきのマルチテナントアプリが収まるかは分からず、それが D3 と D4 の本当の試験になる。
 - **Terrain 側の view の観測。** ブラウザ UI については、アクセシビリティツリーが機械的な Projection の候補である。比較に耐える安定性があるかは未検証。
 - **並行性。** イベントと注入された時刻で非同期は原理的に扱えるが、インターリーブは考え切れていない。
@@ -118,7 +124,7 @@ Survey は model-based testing である。入力列を生成し、Drift を探�
 
 ## ロードマップ
 
-1. `examples/todo.nindub` を書く。一覧画面、詳細画面、完了時の通知メールを含め、view・effect・port を使う例にする。ドメインの中核だけの例にはしない。
+1. ~~`examples/todo.nindub` を書く。一覧画面、詳細画面、完了時の通知メールを含め、view・effect・port を使う例にする。ドメインの中核だけの例にはしない。~~ 完了(草案)。
 2. インタプリタを書き、Map 単体で動かす。
 3. Survey ハーネスを書く。入力生成、機械的な Projection、比較。
 4. AI に TypeScript の Terrain を Realize させ、Survey が通るまで回す。

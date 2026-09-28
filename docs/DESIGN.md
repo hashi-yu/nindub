@@ -101,6 +101,12 @@ The language is **Nindub**, after the Sumerian architect god who drew the temple
 - Every document is written in English (`NAME.md`) and Japanese (`NAME.ja.md`), kept in sync in the same commit.
 - File extension for a Map: `.nindub` (`.gd` belongs to GDScript).
 
+### D16. The syntax is Rust-flavored
+
+Nindub borrows Rust's surface: `struct`, `enum`, `Result<T, E>`, `match`, `let ... else`, closures, `#[attributes]`. The top-level vocabulary is Nindub's own (`state`, `action`, `query`, `view`, `effect`, `port`, `inject`, `invariant`). Pins are attributes on the element they pin. The first example is `examples/todo.nindub`; the constructs are described in `docs/LANGUAGE.md`.
+
+**Rejected:** TypeScript-flavored syntax (too permissive; errors and absence are not first-class), Elm-flavored (unfamiliar to most readers and to AI), and a syntax invented from scratch (every hour spent on novel syntax is an hour not spent on the interpreter, and AI reads Rust well).
+
 ## Consequences worth noting
 
 - The Map's actions, queries and views are the project's public interface. A separate API definition is unnecessary; it is derived from the Map.
@@ -109,7 +115,7 @@ The language is **Nindub**, after the Sumerian architect god who drew the temple
 
 ## Open questions
 
-- **Syntax.** Nothing is fixed yet. The first example (`examples/todo.nindub`) decides it.
+- **Syntax.** Rust-flavored (D16) and drafted in `examples/todo.nindub`; the view vocabulary in particular will change once something renders it.
 - **Size at scale.** A Todo app fits in one Map. Whether an authenticated, multi-tenant application does is unknown and is the real test of D3 and D4.
 - **Observing views in the Terrain.** The accessibility tree is the candidate mechanical Projection for browser UIs. Whether it is stable enough to compare is untested.
 - **Concurrency.** Events and an injected clock cover asynchrony in principle; interleavings have not been thought through.
@@ -118,7 +124,7 @@ The language is **Nindub**, after the Sumerian architect god who drew the temple
 
 ## Roadmap
 
-1. Write `examples/todo.nindub` with a list screen, a detail screen, and a notification email on completion, so that the example exercises views, effects and ports and not only a domain core.
+1. ~~Write `examples/todo.nindub` with a list screen, a detail screen, and a notification email on completion, so that the example exercises views, effects and ports and not only a domain core.~~ Done (draft).
 2. Write the interpreter so the Map runs alone.
 3. Write the Survey harness: input generation, mechanical Projection, comparison.
 4. Have AI Realize a TypeScript Terrain and iterate until Survey passes.
