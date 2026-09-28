@@ -30,7 +30,9 @@ Views are not surveyed yet; that needs the browser instrument.
 
 ## The harness protocol
 
-The first instrument is one HTTP endpoint on the Terrain. It is deliberately minimal: it lets the loop close before the instruments that drive a Terrain's real routes and screens exist (D22).
+The first instrument is two HTTP endpoints on the Terrain. It is deliberately minimal: it lets the loop close before the instruments that drive a Terrain's real routes and screens exist (D22).
+
+`POST {terrain}/__nindub/reset` — return to the initial state. Survey calls it once before a run, so that both sides start where the Map starts. Reply with any 2xx.
 
 `POST {terrain}/__nindub/call`
 

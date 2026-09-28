@@ -232,6 +232,13 @@ export async function survey(map: ast.MapDecl, terrain: Terrain, options: Survey
   const total = scripted ? scripted.length : (options.steps ?? 100);
 
   const report: Report = { seed, steps: [], drift: null, error: null };
+  // Both sides start from the initial state.
+  try {
+    await terrain.reset?.();
+  } catch (e) {
+    report.error = { step: 0, call: "reset", message: `terrain: ${(e as Error).message}` };
+    return report;
+  }
   for (let i = 0; i < total; i++) {
     let name: string;
     let args: Value[];

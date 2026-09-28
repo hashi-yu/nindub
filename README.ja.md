@@ -27,7 +27,7 @@ node src/cli.ts serve examples/todo.nindub     # Map 自身を Terrain として
 node src/cli.ts survey examples/todo.nindub --terrain http://127.0.0.1:PORT --steps 200
 ```
 
-Terrain が Survey にどう答えるかは [docs/SURVEY.ja.md](docs/SURVEY.ja.md) を参照。
+Terrain が Survey にどう答えるかは [docs/SURVEY.ja.md](docs/SURVEY.ja.md)、実際に答える Terrain は [examples/todo-terrain](examples/todo-terrain/README.ja.md) を参照。
 
 ## 文書について
 

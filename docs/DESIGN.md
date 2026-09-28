@@ -207,5 +207,5 @@ This closes the loop before the instruments that drive a Terrain's real routes (
 1. ~~Write `examples/todo.nindub` with a list screen, a detail screen, and a notification email on completion, so that the example exercises views, effects and ports and not only a domain core.~~ Done (draft).
 2. ~~Write the interpreter so the Map runs alone.~~ Done: `nindub run` (dynamic; no type checker yet).
 3. ~~Write the Survey harness: input generation, mechanical Projection, comparison.~~ Done over the harness protocol (D22): `nindub survey`.
-4. Have AI Realize a TypeScript Terrain and iterate until Survey passes.
+4. ~~Have AI Realize a TypeScript Terrain and iterate until Survey passes.~~ Done: `examples/todo-terrain`, with its Realize log and first Amendment in its README.
 5. Then attempt something that is not a Todo app.

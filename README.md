@@ -27,7 +27,7 @@ node src/cli.ts serve examples/todo.nindub     # serve the Map itself as a Terra
 node src/cli.ts survey examples/todo.nindub --terrain http://127.0.0.1:PORT --steps 200
 ```
 
-See [docs/SURVEY.md](docs/SURVEY.md) for how a Terrain answers Survey.
+See [docs/SURVEY.md](docs/SURVEY.md) for how a Terrain answers Survey, and [examples/todo-terrain](examples/todo-terrain/README.md) for a Terrain that does.
 
 ## Documentation
 
