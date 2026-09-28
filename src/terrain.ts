@@ -36,6 +36,8 @@ export interface TerrainReply {
 
 export interface Terrain {
   call(c: TerrainCall): Promise<TerrainReply>;
+  /** Return to the initial state. Survey calls this before a run. */
+  reset?(): Promise<void>;
 }
 
 /** Encode a Map Observation as the reply a conforming Terrain would give. */
@@ -70,6 +72,10 @@ export class HttpTerrain implements Terrain {
   constructor(base: string) {
     this.base = base.replace(/\/$/, "");
   }
+  async reset(): Promise<void> {
+    const res = await fetch(`${this.base}/__nindub/reset`, { method: "POST" });
+    if (!res.ok) throw new Error(`terrain answered ${res.status} to reset`);
+  }
   async call(c: TerrainCall): Promise<TerrainReply> {
     const res = await fetch(`${this.base}/__nindub/call`, {
       method: "POST",
@@ -101,15 +107,25 @@ export class HttpTerrain implements Terrain {
  * deliberately different Map) and to show what a conforming Terrain does.
  */
 export class RuntimeTerrain implements Terrain {
-  readonly runtime: Runtime;
+  runtime: Runtime;
   private readonly env: TypeEnv;
+  private readonly mapDecl: Runtime["map"];
   private pending: TerrainCall = { name: "", args: [], clock: [], ids: [], ports: {} };
   // Port requests made during the current call, kept even if the call fails.
   private requests: TerrainReply["ports"] = [];
 
   constructor(resolved: ResolvedMap, mapDecl: Runtime["map"]) {
     this.env = new TypeEnv(resolved);
-    this.runtime = new Runtime(mapDecl, {
+    this.mapDecl = mapDecl;
+    this.runtime = this.fresh();
+  }
+
+  async reset(): Promise<void> {
+    this.runtime = this.fresh();
+  }
+
+  private fresh(): Runtime {
+    return new Runtime(this.mapDecl, {
       clock: () => {
         const v = this.pending.clock.shift();
         if (v === undefined) throw new RuntimeError("terrain consumed more clock values than injected");
@@ -153,6 +169,11 @@ export class RuntimeTerrain implements Terrain {
 /** Serve a Terrain over the harness protocol. Returns the base URL. */
 export function serve(terrain: Terrain, port = 0): Promise<{ url: string; close: () => Promise<void> }> {
   const server = http.createServer(async (req, res) => {
+    if (req.method === "POST" && req.url === "/__nindub/reset") {
+      await terrain.reset?.();
+      res.writeHead(200, { "content-type": "application/json" }).end("{}");
+      return;
+    }
     if (req.method !== "POST" || req.url !== "/__nindub/call") {
       res.writeHead(404).end();
       return;

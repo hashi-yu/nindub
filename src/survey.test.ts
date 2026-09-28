@@ -99,13 +99,15 @@ test("a script replays exactly and reports the step", async () => {
   assert.deepEqual(r.steps[3]!.map.result, [{ id: "id-1", owner: "u1", title: "Buy milk", done: true, created_at: 0 }]);
 });
 
-test("the protocol works over HTTP", async () => {
+test("the protocol works over HTTP, and reset lets one Terrain serve several runs", async () => {
   const server = await serve(terrainOf(todoSrc));
   try {
-    const r = await survey(todo(), new HttpTerrain(server.url), { seed: 2, steps: 60 });
-    assert.equal(r.drift, null);
-    assert.equal(r.error, null);
-    assert.equal(r.steps.length, 60);
+    for (const seed of [2, 3]) {
+      const r = await survey(todo(), new HttpTerrain(server.url), { seed, steps: 60 });
+      assert.equal(r.drift, null, JSON.stringify(r.drift));
+      assert.equal(r.error, null);
+      assert.equal(r.steps.length, 60);
+    }
   } finally {
     await server.close();
   }
