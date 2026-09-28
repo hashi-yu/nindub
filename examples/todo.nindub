@@ -1,0 +1,182 @@
+//! Todo — a Nindub Map.
+//!
+//! This one file is the whole project. Everything observable about the
+//! Todo app is here: state, actions, queries, screens, side effects and
+//! external dependencies. Anything not here (database, framework, layout,
+//! colors, file structure) is the Terrain's discretion. The Map does not
+//! know the Terrain exists; the Terrain points at the Map (see Pins in
+//! docs/LANGUAGE.md).
+//!
+//! Syntax is a draft. See docs/LANGUAGE.md.
+
+map Todo;
+
+// ---------------------------------------------------------------- Types
+
+type UserId = Id<User>;
+type TodoId = Id<Todo>;
+
+/// Users live in an external directory (see `port Directory`). The Map
+/// only ever sees their ids.
+opaque User;
+
+struct Todo {
+    id: TodoId,
+    owner: UserId,
+    title: Text,
+    done: bool,
+    created_at: Instant,
+}
+
+enum Error {
+    NotFound,
+    Forbidden,
+    InvalidTitle,
+}
+
+// ---------------------------------------------------------------- Injected (D8)
+//
+// The Map has no ambient clock or id source. Survey supplies these to
+// the Map and the Terrain alike, so both sides see the same values.
+
+inject clock: Clock;
+inject ids: IdSource;
+
+// ---------------------------------------------------------------- State
+
+state todos: Table<Todo>;
+
+invariant "titles are between 1 and 200 characters" {
+    todos.all(|t| (1..=200).contains(t.title.len()))
+}
+
+invariant "ids are unique" {
+    todos.unique_by(|t| t.id)
+}
+
+// ---------------------------------------------------------------- Ports (D6)
+//
+// A port is an external service the project depends on. Requests to it
+// are observed; responses are injected by Survey.
+
+port Directory {
+    fn email_of(user: UserId) -> Result<Email, DirectoryError>;
+}
+
+enum DirectoryError {
+    Unknown,
+    Unreachable,
+}
+
+// ---------------------------------------------------------------- Effects (D6)
+//
+// An effect is a side effect on the outside world, emitted as data and
+// never performed by the Map. The sequence of emitted effects is observed.
+
+effect SendMail {
+    to: Email,
+    subject: Text,
+    body: Text,
+}
+
+// ---------------------------------------------------------------- Actions
+
+action create(user: UserId, title: Text) -> Result<TodoId, Error> {
+    requires (1..=200).contains(title.len()) else Error::InvalidTitle;
+
+    let id = ids.fresh();
+    todos.insert(Todo {
+        id,
+        owner: user,
+        title,
+        done: false,
+        created_at: clock.now(),
+    });
+    Ok(id)
+}
+
+action complete(user: UserId, id: TodoId) -> Result<(), Error> {
+    let todo = todos.get(id) else Error::NotFound;
+    requires todo.owner == user else Error::Forbidden;
+
+    todos[id].done = true;
+
+    // Notify by email. If the directory cannot resolve the user, the
+    // completion still succeeds and no mail is sent; that is observable
+    // through the absence of a SendMail effect.
+    match Directory.email_of(user) {
+        Ok(to) => emit SendMail {
+            to,
+            subject: "Done: " + todo.title,
+            body: "You completed \"" + todo.title + "\".",
+        },
+        Err(_) => {}
+    }
+    Ok(())
+}
+
+action remove(user: UserId, id: TodoId) -> Result<(), Error> {
+    let todo = todos.get(id) else Error::NotFound;
+    requires todo.owner == user else Error::Forbidden;
+
+    todos.remove(id);
+    Ok(())
+}
+
+// ---------------------------------------------------------------- Queries
+
+query get(user: UserId, id: TodoId) -> Result<Todo, Error> {
+    let todo = todos.get(id) else Error::NotFound;
+    requires todo.owner == user else Error::Forbidden;
+    Ok(todo)
+}
+
+query list(user: UserId) -> Vec<Todo> {
+    todos
+        .filter(|t| t.owner == user)
+        .sorted_by(|t| t.created_at)
+}
+
+// ---------------------------------------------------------------- Views (D5, D6)
+//
+// A view is the structure of a screen: what is shown and what can be
+// acted on. It is observed as data. Layout, color and typography are the
+// Terrain's discretion.
+
+view List(user: UserId) {
+    heading("Todos");
+
+    form("New todo", |title: Text| create(user, title));
+
+    for t in list(user) {
+        item(t.title, done: t.done) {
+            if !t.done {
+                button("Done", complete(user, t.id));
+            }
+            link("Open", Detail(user, t.id));
+        }
+    }
+}
+
+view Detail(user: UserId, id: TodoId) {
+    match get(user, id) {
+        Ok(t) => {
+            heading(t.title);
+            text(if t.done { "Done" } else { "Not done" });
+            text("Created " + t.created_at);
+            if !t.done {
+                button("Done", complete(user, t.id));
+            }
+            button("Delete", remove(user, t.id)).then(List(user));
+            link("Back", List(user));
+        }
+        Err(Error::NotFound) => {
+            heading("Not found");
+            link("Back", List(user));
+        }
+        Err(Error::Forbidden) => {
+            heading("Not yours");
+            link("Back", List(user));
+        }
+    }
+}

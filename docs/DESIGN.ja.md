@@ -34,7 +34,9 @@ Map は、プロジェクトの観測できるものすべてを書く。状態�
 
 ### D4. 1ファイル、ズームできる
 
-1つのプロジェクトは1つの Map ファイルである。Map の各要素は、Nindub でさらに分解されるか、Pin で Terrain の位置に紐付く。Zoom は Pin をたどる操作で、Scale はその深さである。ファイルは入れ子構造を持つ1つの文書であり、平坦な一覧ではない。
+1つのプロジェクトは1つの Map ファイルである。Map の各要素は、Nindub でさらに分解されるか、Terrain で実現される。Zoom は、要素からそれを実現する Terrain の位置へ Pin をたどる操作で、Scale はその深さである。ファイルは入れ子構造を持つ1つの文書であり、平坦な一覧ではない。
+
+*D17 により修正:Pin は Map ファイルには書かない。*
 
 ### D5. Map に何を書くかは Surface rule が決める
 
@@ -101,6 +103,36 @@ Survey は model-based testing である。入力列を生成し、Drift を探�
 - すべての文書は英語(`NAME.md`)と日本語(`NAME.ja.md`)で書き、同じコミットで揃える。
 - Map の拡張子は `.nindub`(`.gd` は GDScript が使っている)。
 
+### D16. 構文は Rust 風にする
+
+Nindub は Rust の見た目を借りる。`struct`、`enum`、`Result<T, E>`、`match`、`let ... else`、クロージャ。トップレベルの語彙は Nindub 独自のもの(`state`、`action`、`query`、`view`、`effect`、`port`、`inject`、`invariant`)。最初の例は `examples/todo.nindub`、構文の説明は `docs/LANGUAGE.md`。
+
+**却下:** TypeScript 風(緩すぎる。エラーと不在が第一級でない)、Elm 風(多くの読者と AI に馴染みがない)、独自構文(新しい構文に使う時間はインタプリタに使えない時間であり、AI は Rust をよく読める)。最初の草案では Pin を `#[pin(...)]` 属性として Map に書いたが、D17 で外した。
+
+### D17. Map が変わるのは、人間が Amendment を採用したときだけ
+
+Terrain が変わったことを理由に Map が変わることはない。Map が変わる理由はただ一つ、人間が Amendment(D18)を採用したときである。Terrain の整理、ファイル名の変更、フレームワークや DB の変更は、いずれも Map に触れない。
+
+したがって Pin は Map には書かない。Pin は Terrain 側の注釈であり、実現している Map の要素と、観測するトランスポートを名指しする。Nindub のツールが Pin を集めて索引を生成し、Map の隣にコミットする。Zoom とビューアは索引を使い、ビューアは Pin を Map に重ねて表示してよい。Map ファイル自身は、ファイル、ルート、フレームワークを決して書かない。
+
+**却下:** Map の中の属性としての Pin(`#[pin(ts = "src/api/todos.ts::create", via = http("POST /todos"))]`)。読みやすく Zoom も簡単になるが、Map が Terrain のファイル構成に依存する。ファイル構成は D5 により Terrain の裁量であり、Terrain を整理するたびに Map の編集が必要になる。これは正の向きを逆転させる。
+
+### D18. AI は Amendment を提案し、人間が決める
+
+Realize の途中で、AI は Map が間違っている(不変条件が成り立たない)、足りない(エラーの場合分けがない、port が要る)、沈黙している(ページングや重複について何も言っていない)ことに気づく。AI は決して Map を編集しない。Amendment を提出する。Map への diff、理由、そして現在の Terrain を改訂前の Map に対して Survey した結果を添え、その Amendment が許すことになる振る舞いを具体的にする。
+
+人間は 3 つの判断のいずれかを下す。
+
+| 判断 | 意味 | 効果 |
+|---|---|---|
+| 採用 | Map が間違っていた、または足りなかった | Map が変わる。Survey は新しい Map で回る |
+| 却下 | Map が正しい | Terrain を直す。Survey は元の Map で回る |
+| 裁量 | Map は沈黙しており、そのままでよい | 何も変わらない。その点は観測しないと記録する |
+
+Amendment を起こすのは Drift だけである。Survey が検出しない Terrain の変更は、定義により Terrain の裁量の範囲内であり、レビューは要らない。
+
+この経路は、D7 が Projection について閉じた穴を、別の場所に開け直す。AI が Survey が通るまで Map を弱める Amendment を提案しうる。エージェントがテストを消してテストスイートを通すのと同じである。Projection と違い、この穴は機械的には閉じられない。Map の変更が正しいかどうかは、人間の意図についての問いだからである。したがって人間の採用は便宜ではなく唯一の守りであり、添付する Survey 結果はそのレビューを具体的にするためにある。レビューの対象が短く高級な Map の diff であって Terrain の diff でないのも(D13)、同じ理由による。
+
 ## 注目すべき帰結
 
 - Map の action・query・view が、そのままプロジェクトの公開インターフェースになる。別に API 定義を書く必要はなく、Map から導かれる。
@@ -109,7 +141,7 @@ Survey は model-based testing である。入力列を生成し、Drift を探�
 
 ## 未解決の問題
 
-- **構文。** まだ何も決まっていない。最初の例(`examples/todo.nindub`)が決める。
+- **構文。** Rust 風(D16)で、`examples/todo.nindub` に草案がある。特に view の語彙は、何かが描画するようになれば変わる。
 - **規模。** Todo アプリは1つの Map に収まる。認証つきのマルチテナントアプリが収まるかは分からず、それが D3 と D4 の本当の試験になる。
 - **Terrain 側の view の観測。** ブラウザ UI については、アクセシビリティツリーが機械的な Projection の候補である。比較に耐える安定性があるかは未検証。
 - **並行性。** イベントと注入された時刻で非同期は原理的に扱えるが、インターリーブは考え切れていない。
@@ -118,7 +150,7 @@ Survey は model-based testing である。入力列を生成し、Drift を探�
 
 ## ロードマップ
 
-1. `examples/todo.nindub` を書く。一覧画面、詳細画面、完了時の通知メールを含め、view・effect・port を使う例にする。ドメインの中核だけの例にはしない。
+1. ~~`examples/todo.nindub` を書く。一覧画面、詳細画面、完了時の通知メールを含め、view・effect・port を使う例にする。ドメインの中核だけの例にはしない。~~ 完了(草案)。
 2. インタプリタを書き、Map 単体で動かす。
 3. Survey ハーネスを書く。入力生成、機械的な Projection、比較。
 4. AI に TypeScript の Terrain を Realize させ、Survey が通るまで回す。

@@ -10,7 +10,7 @@
 
 この開発手法を **Nindub Driven Development** と呼ぶ。
 
-用語は [GLOSSARY.ja.md](GLOSSARY.ja.md)、これまでの設計上の決定とその理由は [docs/DESIGN.ja.md](docs/DESIGN.ja.md) を参照。
+用語は [GLOSSARY.ja.md](GLOSSARY.ja.md)、これまでの設計上の決定とその理由は [docs/DESIGN.ja.md](docs/DESIGN.ja.md)、Map がどう見えるかは [docs/LANGUAGE.ja.md](docs/LANGUAGE.ja.md) と [examples/todo.nindub](examples/todo.nindub) を参照。
 
 ## 文書について
 
